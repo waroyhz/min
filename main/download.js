@@ -55,21 +55,6 @@ function downloadHandler (event, item, webContents) {
   return true
 }
 
-// CJ: Helper to inject Referrer-Policy into response headers
-// Forces 'no-referrer-when-downgrade' so cross-origin HTTPS requests send full Referer URL
-function _injectReferrerPolicy (headers) {
-  if (!headers) return headers
-  var result = Object.assign({}, headers)
-  // Remove any existing Referrer-Policy header (case-insensitive)
-  Object.keys(result).forEach(function (key) {
-    if (key.toLowerCase() === 'referrer-policy') {
-      delete result[key]
-    }
-  })
-  result['Referrer-Policy'] = ['no-referrer-when-downgrade']
-  return result
-}
-
 function listenForDownloadHeaders (ses) {
   ses.webRequest.onHeadersReceived(function (details, callback) {
     if (details.resourceType === 'mainFrame' && details.responseHeaders) {
@@ -87,7 +72,7 @@ function listenForDownloadHeaders (ses) {
 
       if (typeHeader instanceof Array && typeHeader.filter(t => t.includes('application/pdf')).length > 0 && !attachment) {
       // open in PDF viewer instead
-        callback({ responseHeaders: _injectReferrerPolicy(details.responseHeaders) })
+        callback({ cancel: false })
         sendIPCToWindow(sourceWindow, 'openPDF', {
           url: details.url,
           tabId: null
@@ -117,17 +102,16 @@ function listenForDownloadHeaders (ses) {
       )
 
       callback({
-        responseHeaders: _injectReferrerPolicy({
+        responseHeaders: {
           ...filteredHeaders,
           'Access-Control-Allow-Origin': 'min://app',
           'Access-Control-Allow-Credentials': 'true'
-        })
+        }
       })
       return
     }
 
-    // CJ: Default path — inject Referrer-Policy for all responses
-    callback({ responseHeaders: _injectReferrerPolicy(details.responseHeaders || {}) })
+    callback({ cancel: false })
   })
 }
 
