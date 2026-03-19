@@ -20,13 +20,13 @@ const {
 } = electron
 
 crashReporter.start({
-  submitURL: 'https://minbrowser.org/',
+  submitURL: 'https://www.cjdropshipping.com/',
   uploadToServer: false,
   compress: true
 })
 
 if (process.argv.some(arg => arg === '-v' || arg === '--version')) {
-  console.log('Min: ' + app.getVersion())
+  console.log('CJ Browser: ' + app.getVersion())
   console.log('Chromium: ' + process.versions.chrome)
   process.exit()
 }
@@ -41,20 +41,32 @@ function clamp (n, min, max) {
 
 if (process.platform === 'win32') {
   (async function () {
-    var squirrelCommand = process.argv[1]
-    if (squirrelCommand === '--squirrel-install' || squirrelCommand === '--squirrel-updated') {
-      isInstallerRunning = true
-      await registryInstaller.install()
-    }
-    if (squirrelCommand === '--squirrel-uninstall') {
-      isInstallerRunning = true
-      await registryInstaller.uninstall()
-    }
-    if (require('electron-squirrel-startup')) {
-      app.quit()
+    try {
+      var squirrelCommand = process.argv[1]
+      if (squirrelCommand === '--squirrel-install' || squirrelCommand === '--squirrel-updated') {
+        isInstallerRunning = true
+        await registryInstaller.install()
+      }
+      if (squirrelCommand === '--squirrel-uninstall') {
+        isInstallerRunning = true
+        await registryInstaller.uninstall()
+      }
+      if (require('electron-squirrel-startup')) {
+        app.quit()
+      }
+    } catch (e) {
+      console.warn('[CJ Browser] Squirrel startup handler error (safe to ignore for NSIS installs):', e.message)
     }
   })()
 }
+
+// CJ Browser: Global error handlers to prevent blocking popup dialogs
+process.on('uncaughtException', function (err) {
+  console.error('[CJ Browser] Uncaught exception:', err.message, err.stack)
+})
+process.on('unhandledRejection', function (reason) {
+  console.error('[CJ Browser] Unhandled rejection:', reason)
+})
 
 if (isDevelopmentMode) {
   app.setPath('userData', app.getPath('userData') + '-development')
@@ -63,10 +75,50 @@ if (isDevelopmentMode) {
 // workaround for flicker when focusing app (https://github.com/electron/electron/issues/17942)
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows', 'true')
 
+// CJ Browser: Copiable error dialog utility
+function showCopyableError (title, message, detail) {
+  var errorWin = new BrowserWindow({
+    width: 520,
+    height: 320,
+    title: title || 'CJ Browser Error',
+    resizable: true,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  })
+  var safeTitle = (title || 'Error').replace(/'/g, '&#39;').replace(/</g, '&lt;')
+  var safeMsg = (message || '').replace(/'/g, '&#39;').replace(/</g, '&lt;')
+  var safeDetail = (detail || '').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/\n/g, '<br>')
+  var html = 'data:text/html;charset=utf-8,' + encodeURIComponent(
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + safeTitle + '</title>'
+    + '<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:24px;margin:0;background:#fff;}'
+    + 'h3{color:#f44336;margin:0 0 12px;}p{color:#333;margin:0 0 12px;user-select:text;}'
+    + 'pre{background:#f5f5f5;padding:12px;border-radius:6px;font-size:12px;overflow:auto;'
+    + 'max-height:150px;user-select:text;white-space:pre-wrap;word-break:break-all;}'
+    + 'button{padding:8px 24px;background:#ff6b35;color:#fff;border:none;border-radius:6px;'
+    + 'cursor:pointer;font-size:14px;}button:hover{opacity:.9;}'
+    + '.actions{text-align:right;margin-top:16px;}'
+    + '</style></head><body>'
+    + '<h3>' + safeTitle + '</h3>'
+    + '<p>' + safeMsg + '</p>'
+    + (safeDetail ? '<pre>' + safeDetail + '</pre>' : '')
+    + '<div class="actions"><button onclick="window.close()">关闭</button></div>'
+    + '</body></html>')
+  errorWin.setMenu(null)
+  errorWin.loadURL(html)
+}
+
 var userDataPath = app.getPath('userData')
 
 settings.initialize(userDataPath)
 
+// CJ Browser: Default language to Chinese if not set
+if (!settings.get('userSelectedLanguage')) {
+  settings.set('userSelectedLanguage', 'zh-CN')
+}
 if (settings.get('userSelectedLanguage')) {
   app.commandLine.appendSwitch('lang', settings.get('userSelectedLanguage'))
 }
@@ -190,6 +242,8 @@ function createWindow (customArgs = {}) {
 }
 
 function createWindowWithBounds (bounds, customArgs) {
+  const windowIconPath = path.join(__dirname, 'icons', process.platform === 'win32' ? 'icon256.ico' : 'icon512.png')
+
   const newWin = new BaseWindow({
     width: bounds.width,
     height: bounds.height,
@@ -199,7 +253,7 @@ function createWindowWithBounds (bounds, customArgs) {
     minHeight: 350,
     titleBarStyle: settings.get('useSeparateTitlebar') ? 'default' : 'hidden',
     trafficLightPosition: { x: 12, y: 10 },
-    icon: __dirname + '/icons/icon256.png',
+    icon: windowIconPath,
     frame: settings.get('useSeparateTitlebar'),
     alwaysOnTop: settings.get('windowAlwaysOnTop'),
     backgroundColor: '#fff', // the value of this is ignored, but setting it seems to work around https://github.com/electron/electron/issues/10559
@@ -247,7 +301,16 @@ function createWindowWithBounds (bounds, customArgs) {
   mainView.webContents.once('did-finish-load', function () {
     const winBounds = newWin.getContentBounds()
     mainView.setBounds({x: 0, y: 0, width: winBounds.width, height: winBounds.height})
-  })
+    // CJ Browser: Send domain list and status to newly loaded window
+    try {
+      getWindowWebContents(newWin).send('cj-domains-updated', cjConfig.getDomains())
+      getWindowWebContents(newWin).send('cj-proxy-status', { enabled: typeof cjProxyEnabled !== 'undefined' ? cjProxyEnabled : false, source: typeof cjProxySource !== 'undefined' ? cjProxySource : 'none', loggedIn: !!(cjAuth && cjAuth.getToken()) })
+      if (cjConfig.getEnvironment() !== 'production') {
+        getWindowWebContents(newWin).send('cj-env-changed', cjConfig.getEnvironmentInfo())
+      }
+    } catch (e) {
+      // config may not be loaded yet
+    }  })
 
   mainView.webContents.ipc.on('set-window-title', function(e, title) {
     newWin.title = title
@@ -360,6 +423,11 @@ app.on('ready', function () {
   settings.set('restartNow', false)
   appIsReady = true
 
+  // CJ Browser: Set Dock icon on macOS (dev mode shows Electron default otherwise)
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(path.join(__dirname, 'icons', 'icon512.png'))
+  }
+
   /* the installer launches the app to install registry items and shortcuts,
   but if that's happening, we shouldn't display anything */
   if (isInstallerRunning) {
@@ -387,6 +455,85 @@ app.on('ready', function () {
   mainMenu = buildAppMenu()
   Menu.setApplicationMenu(mainMenu)
   createDockMenu()
+
+  // CJ Browser: Initialize CJ modules
+  cjAuth.initialize(userDataPath)
+  cjTracker.initialize()
+
+  // Initialize environment configuration
+  cjConfig.initializeEnv()
+
+  // Fetch backend config, then PAC domains, then apply proxy
+  cjConfig.fetchConfig(cjAuth.getToken()).then(function () {
+    // Send domain list to all windows
+    windows.getAll().forEach(function (win) {
+      getWindowWebContents(win).send('cj-domains-updated', cjConfig.getDomains())
+    })
+    // Fetch PAC domains, then apply proxy
+    return cjConfig.fetchPacDomains(cjAuth.getToken())
+  }).then(function () {
+    cjConfig.startPacRefresh()
+    // Update proxy from backend config (now with PAC domains)
+    if (typeof updateProxyFromConfig === 'function') {
+      updateProxyFromConfig()
+    }
+  })
+
+  // Initialize auto-updater
+  cjUpdater.initialize()
+
+  // CJ Browser: Initialize remote automation scripts manager
+  cjScripts.initialize(userDataPath)
+
+  // CJ Browser: Initialize AI Automation API
+  cjAutomate.initialize()
+
+  // CJ Browser: Handle SSL certificate errors (corporate proxy environments)
+  app.on('certificate-error', function (event, webContents, url, error, certificate, callback) {
+    console.warn('[CJ Browser] Certificate error for', url, ':', error)
+    event.preventDefault()
+    callback(true)
+  })
+
+  // Track navigation events from all views
+  ipc.on('cj-track-pageview', function (e, data) {
+    cjTracker.trackPageView(data.url, data.title, data.tabId)
+  })
+
+  // CJ Browser: Get proxy status (sync handler for error page)
+  ipc.on('cj-proxy-get-status', function (e) {
+    e.returnValue = {
+      enabled: typeof cjProxyEnabled !== 'undefined' ? cjProxyEnabled : false,
+      source: typeof cjProxySource !== 'undefined' ? cjProxySource : 'none',
+      mode: typeof cjProxyEnabled !== 'undefined' && cjProxyEnabled ? 'company' : 'direct'
+    }
+  })
+
+  // CJ Browser: Proxy mode switching from sidebar
+  ipc.on('cj-proxy-set-mode', function (e, mode) {
+    if (mode === 'company') {
+      if (typeof updateProxyFromConfig === 'function') {
+        updateProxyFromConfig()
+      }
+    } else if (mode === 'direct') {
+      if (typeof applyCJProxy === 'function') {
+        applyCJProxy(false, 'direct')
+      }
+    }
+
+    windows.getAll().forEach(function (win) {
+      getWindowWebContents(win).send('cj-proxy-refresh-current-tab', {
+        mode: mode
+      })
+    })
+  })
+
+  ipc.handle('cj-handle-load-failure', function (e, data) {
+    if (cjConfig && typeof cjConfig.handleLoadFailure === 'function') {
+      return cjConfig.handleLoadFailure(data)
+    }
+    return Promise.resolve({ handled: false })
+  })
 })
 
 app.on('open-url', function (e, url) {
@@ -455,6 +602,7 @@ ipc.on('handoffUpdate', function(e, data) {
 })
 
 ipc.on('quit', function () {
+  cjAutomate.shutdown()
   app.quit()
 })
 

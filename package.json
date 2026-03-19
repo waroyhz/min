@@ -1,9 +1,9 @@
 {
   "name": "min",
-  "productName": "Min",
+  "productName": "CJBrowser",
   "author": "PalmerAL",
-  "version": "1.35.4",
-  "description": "A fast, minimal browser that protects your privacy",
+  "version": "1.0.3",
+  "description": "CJBrowser desktop workspace built from a clean Min staging tree",
   "electronVersion": "40.6.1",
   "main": "main.build.js",
   "standard": {
@@ -43,6 +43,7 @@
     "regedit": "^3.0.3",
     "sortablejs": "^1.15.1",
     "stemmer": "^1.0.5",
+    "stream-slicer": "^0.0.6",
     "write-file-atomic": "^6.0.0"
   },
   "devDependencies": {
@@ -86,5 +87,16 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/minbrowser/min.git"
+  },
+  "build": {
+    "files": [
+      "**/*",
+      "dist/**/*",
+      "!dist/app",
+      "!dist/mac-arm64",
+      "!dist/mac",
+      "!dist/builder-debug.yml"
+    ],
+    "asar": true
   }
 }

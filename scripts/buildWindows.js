@@ -25,11 +25,11 @@ async function afterPackageBuilt (packagePath) {
   }
 
   /* create zip files */
-  var output = fs.createWriteStream('dist/app/' + 'Min-v' + version + '-windows' + archSuffix + '.zip')
+  var output = fs.createWriteStream('dist/app/' + 'CJBrowser-v' + version + '-windows' + archSuffix + '.zip')
   var archive = archiver('zip', {
     zlib: { level: 9 }
   })
-  archive.directory(packagePath, 'Min-v' + version)
+  archive.directory(packagePath, 'CJBrowser-v' + version)
   archive.pipe(output)
   await archive.finalize()
 
@@ -38,10 +38,9 @@ async function afterPackageBuilt (packagePath) {
 
   const options = {
     src: packagePath,
-    dest: 'dist/app/min-installer' + archSuffix,
+    dest: 'dist/app/cjbrowser-installer' + archSuffix,
     icon: 'icons/icon256.ico',
     animation: 'icons/windows-installer.gif',
-    licenseUrl: 'https://github.com/minbrowser/min/blob/master/LICENSE.txt',
     noMsi: true
   }
 
@@ -51,7 +50,7 @@ async function afterPackageBuilt (packagePath) {
 
   await installer(options)
     .then(function () {
-      fs.renameSync('./dist/app/min-installer' + archSuffix + '/min-' + version + '-setup.exe', './dist/app/min-' + version + archSuffix + '-setup.exe')
+      fs.renameSync('./dist/app/cjbrowser-installer' + archSuffix + '/cj-browser-' + version + '-setup.exe', './dist/app/CJBrowser-' + version + archSuffix + '-setup.exe')
     })
     .catch(err => {
       console.error(err, err.stack)

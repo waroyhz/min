@@ -1,110 +1,111 @@
 var regedit = require('regedit')
 
 var installPath = process.execPath
+var appId = 'CJBrowser'
 
 var keysToCreate = [
-  'HKCU\\Software\\Classes\\Min',
-  'HKCU\\Software\\Classes\\Min\\Application',
-  'HKCU\\Software\\Classes\\Min\\DefaulIcon',
-  'HKCU\\Software\\Classes\\Min\\shell\\open\\command',
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\Capabilities\\FileAssociations',
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\Capabilities\\StartMenu',
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\Capabilities\\URLAssociations',
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\DefaultIcon',
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\InstallInfo',
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\shell\\open\\command'
+  'HKCU\\Software\\Classes\\' + appId,
+  'HKCU\\Software\\Classes\\' + appId + '\\Application',
+  'HKCU\\Software\\Classes\\' + appId + '\\DefaulIcon',
+  'HKCU\\Software\\Classes\\' + appId + '\\shell\\open\\command',
+  'HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\Capabilities\\FileAssociations',
+  'HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\Capabilities\\StartMenu',
+  'HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\Capabilities\\URLAssociations',
+  'HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\DefaultIcon',
+  'HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\InstallInfo',
+  'HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\shell\\open\\command'
 ]
 
 var registryConfig = {
   'HKCU\\Software\\RegisteredApplications': {
-    Min: {
-      value: 'Software\\Clients\\StartMenuInternet\\Min\\Capabilities',
+    CJBrowser: {
+      value: 'Software\\Clients\\StartMenuInternet\\' + appId + '\\Capabilities',
       type: 'REG_SZ'
     }
   },
-  'HKCU\\Software\\Classes\\Min': {
+  ['HKCU\\Software\\Classes\\' + appId]: {
     default: {
-      value: 'Min Browser Document',
+      value: 'CJBrowser Document',
       type: 'REG_DEFAULT'
     }
   },
-  'HKCU\\Software\\Classes\\Min\\Application': {
+  ['HKCU\\Software\\Classes\\' + appId + '\\Application']: {
     ApplicationIcon: {
       value: installPath + ',0',
       type: 'REG_SZ'
     },
     ApplicationName: {
-      value: 'Min',
+      value: 'CJBrowser',
       type: 'REG_SZ'
     },
     AppUserModelId: {
-      value: 'Min',
+      value: 'CJBrowser',
       type: 'REG_SZ'
     }
   },
-  'HKCU\\Software\\Classes\\Min\\DefaulIcon': {
+  ['HKCU\\Software\\Classes\\' + appId + '\\DefaulIcon']: {
     ApplicationIcon: {
       value: installPath + ',0',
       type: 'REG_SZ'
     }
   },
-  'HKCU\\Software\\Classes\\Min\\shell\\open\\command': {
+  ['HKCU\\Software\\Classes\\' + appId + '\\shell\\open\\command']: {
     default: {
       value: '"' + installPath + '" "%1"',
       type: 'REG_DEFAULT'
     }
   },
   'HKCU\\Software\\Classes\\.htm\\OpenWithProgIds': {
-    Min: {
+    CJBrowser: {
       value: 'Empty',
       type: 'REG_SZ'
     }
   },
   'HKCU\\Software\\Classes\\.html\\OpenWithProgIds': {
-    Min: {
+    CJBrowser: {
       value: 'Empty',
       type: 'REG_SZ'
     }
   },
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\Capabilities\\FileAssociations': {
+  ['HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\Capabilities\\FileAssociations']: {
     '.htm': {
-      value: 'Min',
+      value: 'CJBrowser',
       type: 'REG_SZ'
     },
     '.html': {
-      value: 'Min',
+      value: 'CJBrowser',
       type: 'REG_SZ'
     }
   },
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\Capabilities\\StartMenu': {
+  ['HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\Capabilities\\StartMenu']: {
     StartMenuInternet: {
-      value: 'Min',
+      value: 'CJBrowser',
       type: 'REG_SZ'
     }
   },
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\Capabilities\\URLAssociations': {
+  ['HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\Capabilities\\URLAssociations']: {
     http: {
-      value: 'Min',
+      value: 'CJBrowser',
       type: 'REG_SZ'
     },
     https: {
-      value: 'Min',
+      value: 'CJBrowser',
       type: 'REG_SZ'
     }
   },
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\DefaultIcon': {
+  ['HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\DefaultIcon']: {
     default: {
       value: installPath + ',0',
       type: 'REG_DEFAULT'
     }
   },
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\InstallInfo': {
+  ['HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\InstallInfo']: {
     IconsVisible: {
       value: 1,
       type: 'REG_DWORD'
     }
   },
-  'HKCU\\Software\\Clients\\StartMenuInternet\\Min\\shell\\open\\command': {
+  ['HKCU\\Software\\Clients\\StartMenuInternet\\' + appId + '\\shell\\open\\command']: {
     default: {
       value: installPath,
       type: 'REG_DEFAULT'
@@ -115,10 +116,10 @@ var registryConfig = {
 var registryInstaller = {
   install: function () {
     return new Promise(function (resolve, reject) {
-      regedit.createKey(keysToCreate, function (err) {
+      regedit.createKey(keysToCreate, function () {
         regedit.putValue(registryConfig, function (err) {
           if (err) {
-            reject()
+            reject(err)
           } else {
             resolve()
           }
@@ -130,7 +131,7 @@ var registryInstaller = {
     return new Promise(function (resolve, reject) {
       regedit.deleteKey(keysToCreate, function (err) {
         if (err) {
-          reject()
+          reject(err)
         } else {
           resolve()
         }

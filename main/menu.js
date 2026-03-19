@@ -6,7 +6,6 @@ function buildAppMenu (options = {}) {
 
     if (value) {
       if (Array.isArray(value)) {
-        // value is array if multiple entries are set
         return value[0].replace('mod', 'CmdOrCtrl')
       } else {
         return value.replace('mod', 'CmdOrCtrl')
@@ -21,7 +20,6 @@ function buildAppMenu (options = {}) {
       label: l('appMenuNewTab'),
       accelerator: getFormattedKeyMapEntry('addTab'),
       click: function (item, window, event) {
-        // keyboard shortcuts for these items are handled in the renderer
         if (!event.triggeredByAccelerator) {
           sendIPCToWindow(window, 'addTab')
         }
@@ -241,7 +239,6 @@ function buildAppMenu (options = {}) {
             sendIPCToWindow(window, 'zoomIn')
           }
         },
-        // Hidden item to enable shortcut on keyboards where = is on a different physical key than +
         {
           label: l('appMenuZoomIn'),
           accelerator: 'CmdOrCtrl+=',
@@ -257,7 +254,6 @@ function buildAppMenu (options = {}) {
             sendIPCToWindow(window, 'zoomOut')
           }
         },
-        // Hidden item to enable shortcut on numpad
         {
           label: l('appMenuZoomIn'),
           accelerator: 'CmdOrCtrl+numadd',
@@ -266,7 +262,6 @@ function buildAppMenu (options = {}) {
           },
           visible: false
         },
-        // Hidden item to enable shortcut on numpad
         {
           label: l('appMenuZoomOut'),
           accelerator: 'CmdOrCtrl+numsub',
@@ -297,11 +292,9 @@ function buildAppMenu (options = {}) {
             } else {
               isFocusMode = true
               windows.getAll().forEach(win => sendIPCToWindow(win, 'enterFocusMode'))
-
-              // wait to show the message until the tabs have been hidden, to make the message less confusing
-              setTimeout(function() {
+              setTimeout(function () {
                 showFocusModeDialog1()
-              }, 16);
+              }, 16)
             }
           }
         },
@@ -326,7 +319,6 @@ function buildAppMenu (options = {}) {
             sendIPCToWindow(window, 'inspectPage')
           }
         },
-        // this is defined a second time (but hidden) in order to provide two keyboard shortcuts
         {
           label: l('appMenuInspectPage'),
           visible: false,
@@ -360,7 +352,7 @@ function buildAppMenu (options = {}) {
             },
             {
               label: 'Inspect Places Service',
-              click: function (item, focusedWindow) {
+              click: function () {
                 placesWindow.webContents.openDevTools({ mode: 'detach' })
               }
             }
@@ -380,9 +372,8 @@ function buildAppMenu (options = {}) {
           {
             label: l('appMenuClose'),
             accelerator: 'CmdOrCtrl+W',
-            click: function (item, window) {
+            click: function () {
               if (windows.getAll().length > 0 && !windows.getAll().some(win => win.isFocused())) {
-                // a devtools window is focused, close it
                 var contents = webContents.getAllWebContents()
                 for (var i = 0; i < contents.length; i++) {
                   if (contents[i].isDevToolsFocused()) {
@@ -391,15 +382,14 @@ function buildAppMenu (options = {}) {
                   }
                 }
               }
-            // otherwise, this event will be handled in the main window
             }
           },
           {
             label: l('appMenuAlwaysOnTop'),
             type: 'checkbox',
             checked: settings.get('windowAlwaysOnTop') || false,
-            click: function (item, window) {
-              windows.getAll().forEach(function(win) {
+            click: function (item) {
+              windows.getAll().forEach(function (win) {
                 win.setAlwaysOnTop(item.checked)
               })
               settings.set('windowAlwaysOnTop', item.checked)
@@ -446,9 +436,9 @@ function buildAppMenu (options = {}) {
         ...(process.platform !== 'darwin' ? [{ type: 'separator' }] : []),
         ...(process.platform !== 'darwin' ? [{
           label: l('appMenuAbout').replace('%n', app.name),
-          click: function (item, window) {
+          click: function () {
             var info = [
-              'Min v' + app.getVersion(),
+              'CJBrowser v' + app.getVersion(),
               'Chromium v' + process.versions.chrome
             ]
             electron.dialog.showMessageBox({
@@ -468,7 +458,6 @@ function buildAppMenu (options = {}) {
 }
 
 function createDockMenu () {
-  // create the menu. based on example from https://github.com/electron/electron/blob/master/docs/tutorial/desktop-environment-integration.md#custom-dock-menu-macos
   if (process.platform === 'darwin') {
     var Menu = electron.Menu
 
@@ -503,7 +492,6 @@ function createDockMenu () {
       }
     ]
 
-    var dockMenu = Menu.buildFromTemplate(template)
-    app.dock.setMenu(dockMenu)
+    app.dock.setMenu(Menu.buildFromTemplate(template))
   }
 }

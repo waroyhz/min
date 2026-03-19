@@ -7,6 +7,7 @@ const Arch = builder.Arch
 
 const packageFile = require('./../package.json')
 const version = packageFile.version
+const productName = packageFile.productName || 'Min'
 const platform = process.argv.find(arg => arg.match('platform')).split('=')[1]
 
 function toArch (platform) {
@@ -20,7 +21,7 @@ function toArch (platform) {
 
 require('./createPackage.js')('mac', { arch: toArch(platform) }).then(function (packagePath) {
   if (platform === 'arm64') {
-    execSync('codesign -s - -a arm64 -f --deep ' + packagePath + '/Min.app')
+    execSync('codesign --force --deep --sign - ' + packagePath + '/' + productName + '.app')
   }
 
   /* create output directory if it doesn't exist */
@@ -31,12 +32,12 @@ require('./createPackage.js')('mac', { arch: toArch(platform) }).then(function (
 
   /* create zip file */
 
-  var output = fs.createWriteStream('dist/app/min-v' + version + '-mac-' + platform + '.zip')
+  var output = fs.createWriteStream('dist/app/' + productName + '-v' + version + '-mac-' + platform + '.zip')
   var archive = archiver('zip', {
     zlib: { level: 9 }
   })
 
-  archive.directory(path.resolve(packagePath, 'Min.app'), 'Min.app')
+  archive.directory(path.resolve(packagePath, productName + '.app'), productName + '.app')
 
   archive.pipe(output)
   archive.finalize()

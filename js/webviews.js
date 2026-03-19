@@ -9,6 +9,29 @@ var hasSeparateTitlebar = settings.get('useSeparateTitlebar')
 var windowIsMaximized = false // affects navbar height on Windows
 var windowIsFullscreen = false
 
+function throttle (fn, threshhold, scope) {
+  threshhold || (threshhold = 250)
+  var last
+  var deferTimer
+
+  return function () {
+    var context = scope || this
+    var now = +new Date()
+    var args = arguments
+
+    if (last && now < last + threshhold) {
+      clearTimeout(deferTimer)
+      deferTimer = setTimeout(function () {
+        last = now
+        fn.apply(context, args)
+      }, threshhold)
+    } else {
+      last = now
+      fn.apply(context, args)
+    }
+  }
+}
+
 function captureCurrentTab (options) {
   if (tabs.get(tabs.getSelected()).private) {
     // don't capture placeholders for private tabs

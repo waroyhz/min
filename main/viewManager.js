@@ -153,6 +153,9 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
 
   // Open a login prompt when site asks for http authentication
   view.webContents.on('login', (event, authenticationResponseDetails, authInfo, callback) => {
+    if (authInfo.isProxy) { // Proxy auth handled by app-level handler in proxy.js
+      return
+    }
     if (authInfo.scheme !== 'basic') { // Only for basic auth
       return
     }
@@ -175,7 +178,7 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
   // show an "open in app" prompt for external protocols
 
   function handleExternalProtocol (e, url, isInPlace, isMainFrame, frameProcessId, frameRoutingId) {
-    var knownProtocols = ['http', 'https', 'file', 'min', 'about', 'data', 'javascript', 'chrome'] // TODO anything else?
+    var knownProtocols = ['http', 'https', 'file', 'min', 'about', 'data', 'javascript', 'chrome'] // flash[26年03月14日15:38] 已支持的协议列表，覆盖常见场景
     if (!knownProtocols.includes(url.split(':')[0])) {
       var externalApp = app.getApplicationNameForProtocol(url)
       if (externalApp) {
@@ -185,22 +188,43 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
           setTimeout(function () {
             globalLaunchRequests--
           }, 20000)
-          var result = electron.dialog.showMessageBoxSync({
+          electron.dialog.showMessageBox({
             type: 'question',
             buttons: ['OK', 'Cancel'],
             message: l('openExternalApp').replace('%s', sanitizedName).replace(/\\/g, ''),
             detail: url.length > 160 ? url.substring(0, 160) + '...' : url
+          }).then(function (result) {
+            if (result.response === 0) {
+              electron.shell.openExternal(url)
+            }
           })
-
-          if (result === 0) {
-            electron.shell.openExternal(url)
-          }
         }
       }
     }
   }
 
   view.webContents.on('did-start-navigation', handleExternalProtocol)
+
+  // CJ Browser: Track page navigation for operation logging
+  view.webContents.on('did-finish-load', function () {
+    try {
+      var url = view.webContents.getURL()
+      var title = view.webContents.getTitle()
+      if (url && !url.startsWith('min://') && url !== 'about:blank') {
+        cjTracker.trackPageView(url, title, id)
+        // CJ Browser: Check for auto-login on CJ domains
+        if (url.indexOf('cjdropshipping') !== -1 && cjAuth && typeof cjAuth.checkAutoLogin === 'function') {
+          cjAuth.checkAutoLogin(url, view.webContents)
+        }
+        if (cjConfig && typeof cjConfig.handleRecoveredPage === 'function') {
+          cjConfig.handleRecoveredPage(url, view.webContents)
+        }
+      }
+    } catch (e) {
+      console.warn('[CJ View] did-finish-load error:', e.message)
+    }
+  })
+
   /*
   It's possible for an HTTP request to redirect to an external app link
   (primary use case for this is OAuth from desktop app > browser > back to app)

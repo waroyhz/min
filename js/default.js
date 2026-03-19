@@ -15,6 +15,8 @@ window.fs = require('fs')
 window.EventEmitter = require('events')
 window.ipc = electron.ipcRenderer
 
+var webviews = require('webviews.js')
+
 if (navigator.platform === 'MacIntel') {
   document.body.classList.add('mac')
   window.platformType = 'mac'
@@ -55,6 +57,55 @@ ipc.on('focus', function () {
 
 ipc.on('blur', function () {
   document.body.classList.remove('focused')
+})
+
+var originalEmitEvent = webviews.emitEvent.bind(webviews)
+webviews.emitEvent = function (event, tabId, args) {
+  if (event === 'did-fail-load') {
+    var errorCode = args && args[0]
+    var validatedURL = args && args[2]
+    var isMainFrame = args && args[3]
+
+    if (errorCode === -118 && isMainFrame && validatedURL && /^https?:/i.test(validatedURL)) {
+      ipc.invoke('cj-handle-load-failure', {
+        tabId: tabId,
+        errorCode: errorCode,
+        errorDesc: args[1],
+        validatedURL: validatedURL,
+        isMainFrame: isMainFrame
+      }).then(function (result) {
+        if (result && result.handled && result.reload && webviews.hasViewForTab(tabId)) {
+          tabs.update(tabId, {
+            url: validatedURL
+          })
+          setTimeout(function () {
+            if (webviews.hasViewForTab(tabId)) {
+              webviews.callAsync(tabId, 'loadURL', [validatedURL])
+            }
+          }, result.delayMs || 600)
+          return
+        }
+
+        originalEmitEvent(event, tabId, args)
+      }).catch(function () {
+        originalEmitEvent(event, tabId, args)
+      })
+      return
+    }
+  }
+
+  originalEmitEvent(event, tabId, args)
+}
+
+ipc.on('cj-proxy-refresh-current-tab', function () {
+  var selectedTab = tabs.getSelected()
+  var selectedData = selectedTab ? tabs.get(selectedTab) : null
+
+  if (!selectedTab || !selectedData || !selectedData.url || selectedData.url.indexOf('min://') === 0) {
+    return
+  }
+
+  webviews.callAsync(selectedTab, 'reloadIgnoringCache')
 })
 
 // https://remysharp.com/2010/07/21/throttling-function-calls
@@ -178,11 +229,54 @@ require('searchbar/searchSuggestionsPlugin.js').initialize()
 require('searchbar/placeSuggestionsPlugin.js').initialize()
 require('searchbar/updateNotifications.js').initialize()
 require('searchbar/restoreTaskPlugin.js').initialize()
+
+// CJ Browser - Domain Sidebar
+require('navbar/cjSidebar.js').initialize()
 require('searchbar/bookmarkManager.js').initialize()
 require('searchbar/historyViewer.js').initialize()
 require('searchbar/developmentModeNotification.js').initialize()
 require('searchbar/shortcutButtons.js').initialize()
 require('searchbar/calculatorPlugin.js').initialize()
+
+// CJ Browser - Non-blocking update notification
+;(function () {
+  var updateBar = null
+
+  ipc.on('cj-update-available', function (event, info) {
+    if (updateBar && updateBar.parentNode) {
+      updateBar.parentNode.removeChild(updateBar)
+    }
+
+    updateBar = document.createElement('div')
+    updateBar.id = 'cj-update-bar'
+    updateBar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:999999;display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 16px;background:#1a73e8;color:#fff;font-size:13px;font-family:system-ui,sans-serif;box-shadow:0 -2px 8px rgba(0,0,0,.18);'
+
+    var msg = document.createElement('span')
+    msg.textContent = '发现新版本 v' + info.latestVersion + '（当前 v' + info.currentVersion + '）'
+    updateBar.appendChild(msg)
+
+    if (info.downloadUrl) {
+      var btn = document.createElement('button')
+      btn.textContent = '前往下载'
+      btn.style.cssText = 'border:1px solid #fff;background:transparent;color:#fff;padding:3px 12px;border-radius:3px;cursor:pointer;font-size:12px;'
+      btn.addEventListener('click', function () {
+        ipc.send('cj-update-download', info.downloadUrl)
+      })
+      updateBar.appendChild(btn)
+    }
+
+    var close = document.createElement('button')
+    close.textContent = '×'
+    close.style.cssText = 'border:none;background:transparent;color:#fff;font-size:18px;cursor:pointer;padding:0 4px;line-height:1;'
+    close.addEventListener('click', function () {
+      if (updateBar.parentNode) updateBar.parentNode.removeChild(updateBar)
+      ipc.send('cj-update-dismiss')
+    })
+    updateBar.appendChild(close)
+
+    document.body.appendChild(updateBar)
+  })
+})()
 
 // once everything's loaded, start the session
 require('sessionRestore.js').restore()
