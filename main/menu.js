@@ -412,13 +412,13 @@ function buildAppMenu (options = {}) {
         {
           label: l('appMenuKeyboardShortcuts'),
           click: function () {
-            openTabInWindow('https://github.com/minbrowser/min/wiki#keyboard-shortcuts')
+            openTabInWindow('https://github.com/waroyhz/min/wiki#keyboard-shortcuts')
           }
         },
         {
           label: l('appMenuReportBug'),
           click: function () {
-            openTabInWindow('https://github.com/minbrowser/min/issues/new')
+            openTabInWindow('https://github.com/waroyhz/min/issues/new')
           }
         },
         {
@@ -430,7 +430,7 @@ function buildAppMenu (options = {}) {
         {
           label: l('appMenuViewGithub'),
           click: function () {
-            openTabInWindow('https://github.com/minbrowser/min')
+            openTabInWindow('https://github.com/waroyhz/min')
           }
         },
         ...(process.platform !== 'darwin' ? [{ type: 'separator' }] : []),
