@@ -6,11 +6,18 @@
 
 var http = require('http')
 var urlModule = require('url')
+var crypto = require('crypto')
 
 var cjAutomate = {
   server: null,
   port: 9223,
   configuredTokens: [],
+  envTokens: [],
+  tokenStorePath: null,
+  managedToken: null,
+  managedTokenEnabled: true,
+  managedTokenCreatedAt: 0,
+  managedTokenUpdatedAt: 0,
   controlledTabs: {},
   pendingAuthTokens: [],
   lastAuthRequestTime: 0,
@@ -18,36 +25,164 @@ var cjAutomate = {
   initialize: function () {
     cjAutomate._loadConfiguredTokens()
     cjAutomate._startServer()
+    cjAutomate._registerIPC()
     console.log('[CJ Automate] AI Automation API initialized')
   },
 
   _loadConfiguredTokens: function () {
-    // Auto-generate a debug token on startup for external tool access
-    var debugToken = 'cjauto-' + Math.random().toString(36).substring(2) + Date.now().toString(36)
-    cjAutomate.configuredTokens.push(debugToken)
-    console.log('[CJ Automate] ========================================')
-    console.log('[CJ Automate] Auto-generated debug token: ' + debugToken)
-    console.log('[CJ Automate] ========================================')
+    cjAutomate.tokenStorePath = path.join(app.getPath('userData'), 'cj-automate-tokens.json')
 
-    // Write to file for external tools to discover
-    try {
-      var tokensFile = path.join(app.getPath('userData'), 'cj-automate-tokens.json')
-      fs.writeFileSync(tokensFile, JSON.stringify({ tokens: [debugToken] }), 'utf-8')
-      console.log('[CJ Automate] Token written to: ' + tokensFile)
-    } catch (e) {
-      console.warn('[CJ Automate] Failed to write tokens file:', e.message)
+    var store = cjAutomate._readTokenStore()
+    if (store.skillsKey && store.skillsKey.token) {
+      cjAutomate.managedToken = store.skillsKey.token
+      cjAutomate.managedTokenEnabled = store.skillsKey.enabled !== false
+      cjAutomate.managedTokenCreatedAt = store.skillsKey.createdAt || Date.now()
+      cjAutomate.managedTokenUpdatedAt = store.skillsKey.updatedAt || cjAutomate.managedTokenCreatedAt
+    } else if (store.tokens && store.tokens[0]) {
+      cjAutomate.managedToken = store.tokens[0]
+      cjAutomate.managedTokenEnabled = true
+      cjAutomate.managedTokenCreatedAt = Date.now()
+      cjAutomate.managedTokenUpdatedAt = cjAutomate.managedTokenCreatedAt
     }
 
-    // Also load any additional tokens from environment variable
+    if (!cjAutomate.managedToken) {
+      cjAutomate.managedToken = cjAutomate._generateManagedToken()
+      cjAutomate.managedTokenEnabled = true
+      cjAutomate.managedTokenCreatedAt = Date.now()
+      cjAutomate.managedTokenUpdatedAt = cjAutomate.managedTokenCreatedAt
+    }
+
     var envToken = process.env.CJ_AUTOMATE_TOKEN
     if (envToken) {
-      cjAutomate.configuredTokens.push(envToken)
+      cjAutomate.envTokens.push(envToken)
     }
 
     var envPort = process.env.CJ_AUTOMATE_PORT
     if (envPort && parseInt(envPort, 10) > 0) {
       cjAutomate.port = parseInt(envPort, 10)
     }
+
+    cjAutomate._syncConfiguredTokens()
+    cjAutomate._writeTokenStore()
+
+    console.log('[CJ Automate] ========================================')
+    console.log('[CJ Automate] Managed skills key: ' + cjAutomate.managedToken)
+    console.log('[CJ Automate] Skills key enabled: ' + cjAutomate.managedTokenEnabled)
+    console.log('[CJ Automate] Token written to: ' + cjAutomate.tokenStorePath)
+    console.log('[CJ Automate] ========================================')
+  },
+
+  _readTokenStore: function () {
+    try {
+      if (fs.existsSync(cjAutomate.tokenStorePath)) {
+        return JSON.parse(fs.readFileSync(cjAutomate.tokenStorePath, 'utf-8')) || {}
+      }
+    } catch (e) {
+      console.warn('[CJ Automate] Failed to read token store:', e.message)
+    }
+    return {}
+  },
+
+  _writeTokenStore: function () {
+    try {
+      fs.writeFileSync(cjAutomate.tokenStorePath, JSON.stringify({
+        version: 2,
+        tokens: (cjAutomate.managedTokenEnabled && cjAutomate.managedToken) ? [cjAutomate.managedToken] : [],
+        skillsKey: {
+          token: cjAutomate.managedToken,
+          enabled: !!cjAutomate.managedTokenEnabled,
+          createdAt: cjAutomate.managedTokenCreatedAt,
+          updatedAt: cjAutomate.managedTokenUpdatedAt
+        }
+      }, null, 2), 'utf-8')
+    } catch (e) {
+      console.warn('[CJ Automate] Failed to write token store:', e.message)
+    }
+  },
+
+  _syncConfiguredTokens: function () {
+    cjAutomate.configuredTokens = []
+
+    if (cjAutomate.managedTokenEnabled && cjAutomate.managedToken) {
+      cjAutomate.configuredTokens.push(cjAutomate.managedToken)
+    }
+
+    cjAutomate.envTokens.forEach(function (token) {
+      if (cjAutomate.configuredTokens.indexOf(token) === -1) {
+        cjAutomate.configuredTokens.push(token)
+      }
+    })
+  },
+
+  _generateManagedToken: function () {
+    return 'cjskills-' + crypto.randomBytes(24).toString('hex')
+  },
+
+  _maskToken: function (token) {
+    if (!token) {
+      return ''
+    }
+    if (token.length <= 12) {
+      return token
+    }
+    return token.slice(0, 8) + '...' + token.slice(-4)
+  },
+
+  _getSkillsConfig: function (includeToken) {
+    var baseUrl = 'http://127.0.0.1:' + cjAutomate.port
+    var config = {
+      baseUrl: baseUrl,
+      skillsUrl: baseUrl + '/api/skills',
+      versionUrl: baseUrl + '/api/version',
+      authType: 'Bearer',
+      keyEnabled: !!cjAutomate.managedTokenEnabled,
+      keyPreview: cjAutomate._maskToken(cjAutomate.managedToken),
+      createdAt: cjAutomate.managedTokenCreatedAt,
+      updatedAt: cjAutomate.managedTokenUpdatedAt
+    }
+
+    if (includeToken) {
+      config.token = cjAutomate.managedToken || ''
+    }
+
+    return config
+  },
+
+  _rotateManagedToken: function () {
+    if (!cjAutomate.managedTokenCreatedAt) {
+      cjAutomate.managedTokenCreatedAt = Date.now()
+    }
+    cjAutomate.managedToken = cjAutomate._generateManagedToken()
+    cjAutomate.managedTokenEnabled = true
+    cjAutomate.managedTokenUpdatedAt = Date.now()
+    cjAutomate._syncConfiguredTokens()
+    cjAutomate._writeTokenStore()
+    return cjAutomate._getSkillsConfig(true)
+  },
+
+  _setManagedTokenEnabled: function (enabled) {
+    cjAutomate.managedTokenEnabled = !!enabled
+    if (!cjAutomate.managedTokenCreatedAt) {
+      cjAutomate.managedTokenCreatedAt = Date.now()
+    }
+    cjAutomate.managedTokenUpdatedAt = Date.now()
+    cjAutomate._syncConfiguredTokens()
+    cjAutomate._writeTokenStore()
+    return cjAutomate._getSkillsConfig(true)
+  },
+
+  _registerIPC: function () {
+    ipc.handle('cj-automate-get-skills-config', function () {
+      return cjAutomate._getSkillsConfig(true)
+    })
+
+    ipc.handle('cj-automate-rotate-skills-key', function () {
+      return cjAutomate._rotateManagedToken()
+    })
+
+    ipc.handle('cj-automate-set-skills-key-enabled', function (event, enabled) {
+      return cjAutomate._setManagedTokenEnabled(enabled)
+    })
   },
 
   // ---- Token Validation ----
@@ -147,14 +282,14 @@ var cjAutomate = {
     return new Promise(function (resolve, reject) {
       var parentWin = windows.getCurrent()
       var popup = new BrowserWindow({
-        width: 420,
-        height: 220,
+        width: 480,
+        height: 280,
         parent: parentWin || undefined,
         modal: !!parentWin,
         resizable: false,
         minimizable: false,
         maximizable: false,
-        title: 'CJ Browser - AI Automation Authorization',
+        title: 'CJ 浏览器 - AI 自动化授权',
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true
@@ -165,16 +300,24 @@ var cjAutomate = {
       var tempToken = crypto.randomBytes(32).toString('hex')
 
       var html = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
-        '<style>body{font-family:sans-serif;padding:30px;text-align:center;background:#f5f5f5;}' +
-        'h3{color:#333;margin-bottom:15px;}p{color:#666;font-size:14px;margin-bottom:20px;}' +
+        '<style>body{font-family:system-ui,-apple-system,sans-serif;padding:30px;text-align:center;background:#f5f5f5;}' +
+        'h3{color:#333;margin-bottom:12px;font-size:18px;}p{color:#666;font-size:14px;margin-bottom:20px;line-height:1.6;}' +
         '.btn{display:inline-block;padding:10px 30px;margin:0 10px;border:none;border-radius:6px;' +
-        'font-size:15px;cursor:pointer;}.allow{background:#4CAF50;color:#fff;}.deny{background:#f44336;color:#fff;}' +
+        'font-size:15px;cursor:pointer;transition:opacity .2s;}.btn:hover{opacity:.85;}' +
+        '.allow{background:#4CAF50;color:#fff;}.deny{background:#f44336;color:#fff;}' +
+        '#countdown{font-size:13px;color:#999;margin-top:14px;}' +
         '</style></head><body>' +
-        '<h3>AI Automation Authorization</h3>' +
-        '<p>An external AI agent is requesting browser control permission. Allow?</p>' +
-        '<button class="btn allow" onclick="document.title=\'AUTH_ALLOW\'">Allow (60s)</button>' +
-        '<button class="btn deny" onclick="document.title=\'AUTH_DENY\'">Deny</button>' +
-        '<script>setTimeout(function(){document.title="AUTH_TIMEOUT"},60000);</script>' +
+        '<h3>AI 自动化授权</h3>' +
+        '<p>外部 AI 代理正在请求浏览器控制权限。<br>是否允许？</p>' +
+        '<button id="allowBtn" class="btn allow" onclick="document.title=\'AUTH_ALLOW\'">允许</button>' +
+        '<button class="btn deny" onclick="document.title=\'AUTH_DENY\'">拒绝</button>' +
+        '<div id="countdown"></div>' +
+        '<script>' +
+        'var sec=60;var cd=document.getElementById("countdown");var ab=document.getElementById("allowBtn");' +
+        'function tick(){if(sec<=0){document.title="AUTH_ALLOW";return;}' +
+        'cd.textContent=sec+" 秒后自动允许";ab.textContent="允许 ("+sec+"s)";sec--;setTimeout(tick,1000);}' +
+        'tick();' +
+        '</script>' +
         '</body></html>'
 
       popup.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
@@ -269,6 +412,18 @@ var cjAutomate = {
     }
     if (method === 'GET' && pathname === '/api/skills') {
       return cjAutomate._handleSkills(req, res)
+    }
+    if (method === 'GET' && pathname === '/api/skills/key') {
+      return cjAutomate._handleSkillsKeyStatus(req, res)
+    }
+    if (method === 'POST' && pathname === '/api/skills/key') {
+      return cjAutomate._handleRotateSkillsKey(req, res)
+    }
+    if (method === 'POST' && pathname === '/api/skills/key/enable') {
+      return cjAutomate._handleSetSkillsKeyEnabled(req, res, true)
+    }
+    if (method === 'POST' && pathname === '/api/skills/key/disable') {
+      return cjAutomate._handleSetSkillsKeyEnabled(req, res, false)
     }
     if (method === 'POST' && pathname === '/api/auth/request') {
       return cjAutomate._handleAuthRequest(req, res)
@@ -418,6 +573,29 @@ var cjAutomate = {
 
   _handleSkills: function (req, res) {
     cjAutomate._sendJson(res, 200, cjAutomate._getSkillsManifest())
+  },
+
+  _handleSkillsKeyStatus: function (req, res) {
+    cjAutomate._sendJson(res, 200, cjAutomate._getSkillsConfig(true))
+  },
+
+  _handleRotateSkillsKey: function (req, res) {
+    var config = cjAutomate._rotateManagedToken()
+    cjAutomate._sendJson(res, 200, {
+      success: true,
+      message: 'Skills key regenerated',
+      config: config,
+      token: config.token
+    })
+  },
+
+  _handleSetSkillsKeyEnabled: function (req, res, enabled) {
+    var config = cjAutomate._setManagedTokenEnabled(enabled)
+    cjAutomate._sendJson(res, 200, {
+      success: true,
+      message: enabled ? 'Skills key enabled' : 'Skills key disabled',
+      config: config
+    })
   },
 
   _handleVersionCheck: function (req, res) {
@@ -643,18 +821,22 @@ var cjAutomate = {
   _getSkillsManifest: function () {
     return {
       name: 'CJBrowser Automation API',
-      version: '1.6.0',
-      description: 'HTTP API for AI agents to control CJBrowser — navigate pages, execute scripts, take screenshots, manage tabs, authentication, proxy status, environment switching.',
+      version: '1.7.0',
+      description: 'HTTP API for AI agents to control CJBrowser — navigate pages, execute scripts, take screenshots, manage tabs, authentication, proxy status, environment switching, and manage the local Skills access key.',
       baseUrl: 'http://127.0.0.1:' + cjAutomate.port,
       authentication: {
         type: 'bearer',
-        description: 'Use Authorization: Bearer <token>. Supports WeChat token (default), static tokens, and popup authorization (60s temp token).',
-        tokenSources: ['Enterprise WeChat login token (default)', 'CJ_AUTOMATE_TOKEN env var', 'cj-automate-tokens.json', 'POST /api/auth/request (popup, 60s)']
+        description: 'Use Authorization: Bearer <token>. Supports WeChat token (default), managed Skills key, static environment token, and popup authorization (60s temp token).',
+        tokenSources: ['Enterprise WeChat login token (default)', 'Managed Skills key in cj-automate-tokens.json', 'CJ_AUTOMATE_TOKEN env var', 'POST /api/auth/request (popup, 60s)']
       },
       endpoints: [
         { method: 'GET', path: '/api/status', description: 'Browser status (includes login, proxy, environment). No auth required.' },
         { method: 'GET', path: '/api/version', description: 'Version check — current, latest, updateAvailable, downloadUrl. No auth required.' },
         { method: 'GET', path: '/api/skills', description: 'This manifest. No auth required.' },
+        { method: 'GET', path: '/api/skills/key', description: 'Get Skills access info and current managed key. Requires auth.' },
+        { method: 'POST', path: '/api/skills/key', description: 'Generate/replace the managed Skills key. Requires auth.' },
+        { method: 'POST', path: '/api/skills/key/enable', description: 'Enable the managed Skills key. Requires auth.' },
+        { method: 'POST', path: '/api/skills/key/disable', description: 'Disable the managed Skills key. Requires auth.' },
         { method: 'POST', path: '/api/auth/request', description: 'Request popup authorization. Returns temp token (60s). Has 1-min cooldown. No auth required.' },
         { method: 'GET', path: '/api/auth/status', description: 'Auth status and methods. Requires auth.' },
         { method: 'POST', path: '/api/auth/login', description: 'Trigger login window. Requires auth.' },

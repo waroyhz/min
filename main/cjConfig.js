@@ -92,7 +92,7 @@ var cjConfig = {
   lastPacFetchAt: 0,
   pendingPacPrompts: {},
   version: {
-    latest: '1.0.3',
+    latest: '1.0.5',
     forceUpdate: false,
     downloadUrl: '',
     releaseNotes: ''

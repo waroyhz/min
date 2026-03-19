@@ -349,4 +349,20 @@ if (url) {
   })
 }
 
+// CJ Browser: add proxy/login hint for connection errors
+var connectionErrors = ['-7', '-100', '-101', '-102', '-103', '-104', '-105', '-106', '-109', '-118', '-130', '-131']
+if (connectionErrors.indexOf(ec) !== -1) {
+  var hint = document.createElement('div')
+  hint.id = 'cj-error-hint'
+  hint.style.cssText = 'margin-top:24px;padding:16px;border-radius:8px;background:#fff8f0;border:1px solid #ffe0c0;max-width:520px;text-align:left;font-size:13px;line-height:1.8;color:#555;'
+  hint.innerHTML = [
+    '<div style="font-weight:600;color:#ff6f2c;margin-bottom:8px;">💡 CJ 浏览器提示</div>',
+    '<div>如果您<b>已登录</b>且当前为「直接访问」模式：</div>',
+    '<div style="padding-left:12px;">→ 请打开左上角 <b>CJ</b> 侧边栏，切换到「公司代理」模式后重试。</div>',
+    '<div style="margin-top:6px;">如果您<b>未登录</b>：</div>',
+    '<div style="padding-left:12px;">→ 请先点击左上角 <b>CJ</b> 按钮，使用企业微信登录，登录后将自动启用公司代理网络。</div>'
+  ].join('')
+  document.getElementById('page-wrapper').appendChild(hint)
+}
+
 primaryButton.focus()
