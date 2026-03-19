@@ -1,0 +1,539 @@
+/* CJ Browser - Sidebar Styles */
+
+/* Toggle Button */
+.cj-sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 28px;
+  margin: 4px 4px 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #FF8040, #FF5500);
+  color: white;
+  cursor: pointer;
+  flex-shrink: 0;
+  z-index: 10;
+  transition: opacity 0.2s, transform 0.15s;
+  -webkit-app-region: no-drag;
+}
+
+.cj-sidebar-toggle:hover {
+  opacity: 0.85;
+  transform: scale(1.05);
+}
+
+.cj-sidebar-toggle:active {
+  transform: scale(0.95);
+}
+
+.cj-toggle-icon {
+  font-size: 11px;
+  font-weight: 900;
+  font-family: 'Arial Black', Arial, sans-serif;
+  letter-spacing: -0.5px;
+}
+
+.cj-toggle-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: none;
+}
+
+/* Sidebar Panel */
+.cj-sidebar {
+  position: fixed;
+  left: -260px;
+  top: calc(36px + var(--control-space-top));
+  width: 260px;
+  height: calc(100% - 36px - var(--control-space-top));
+  background: #f8f9fa;
+  border-right: 1px solid #e0e0e0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  transition: left 0.25s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
+}
+
+.cj-sidebar.visible {
+  left: 0;
+}
+
+/* Dark mode */
+body.dark-mode .cj-sidebar {
+  background: #1e2128;
+  border-right-color: #333;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Sidebar header */
+.cj-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  background: linear-gradient(135deg, #FF8040, #FF5500);
+  color: white;
+  -webkit-app-region: no-drag;
+}
+
+body.dark-mode .cj-sidebar-header {
+  border-bottom-color: #444;
+}
+
+.cj-sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cj-logo-text {
+  font-size: 20px;
+  font-weight: 900;
+  font-family: 'Arial Black', Arial, sans-serif;
+}
+
+.cj-logo-title {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+.cj-sidebar-close {
+  border: none;
+  background: none;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.cj-sidebar-close:hover {
+  opacity: 1;
+}
+
+/* User info section */
+.cj-user-info {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+body.dark-mode .cj-user-info {
+  border-bottom-color: #333;
+}
+
+.cj-login-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  border: 1px solid #FF6F2C;
+  border-radius: 6px;
+  background: white;
+  color: #FF6F2C;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cj-login-btn:hover {
+  background: #FF6F2C;
+  color: white;
+}
+
+body.dark-mode .cj-login-btn {
+  background: transparent;
+  border-color: #FF8040;
+  color: #FF8040;
+}
+
+body.dark-mode .cj-login-btn:hover {
+  background: #FF6F2C;
+  color: white;
+}
+
+.cj-user-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cj-user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #FF8040, #FF5500);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.cj-user-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.dark-mode .cj-user-name {
+  color: #ddd;
+}
+
+.cj-logout-btn {
+  border: 1px solid #999;
+  border-radius: 4px;
+  background: transparent;
+  color: #999;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cj-logout-btn:hover {
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+/* Domain list */
+.cj-domain-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.cj-domain-section {
+  margin-bottom: 4px;
+}
+
+.cj-domain-category {
+  padding: 6px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #999;
+  letter-spacing: 0.5px;
+}
+
+body.dark-mode .cj-domain-category {
+  color: #666;
+}
+
+.cj-domain-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  text-decoration: none;
+  color: #333;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.cj-domain-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.dark-mode .cj-domain-item {
+  color: #ccc;
+}
+
+body.dark-mode .cj-domain-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cj-domain-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.cj-domain-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Footer */
+.cj-sidebar-footer {
+  padding: 8px 16px;
+  border-top: 1px solid #e0e0e0;
+  text-align: center;
+}
+
+body.dark-mode .cj-sidebar-footer {
+  border-top-color: #333;
+}
+
+.cj-version {
+  font-size: 11px;
+  color: #999;
+}
+
+/* Scrollbar styling */
+.cj-domain-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.cj-domain-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cj-domain-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+}
+
+body.dark-mode .cj-domain-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Proxy status dot on toggle button */
+.cj-proxy-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #999;
+  border: 1px solid rgba(255,255,255,0.6);
+}
+
+.cj-proxy-dot.active {
+  background: #4caf50;
+}
+
+/* Environment dot on toggle button */
+.cj-env-dot {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  font-size: 7px;
+  font-weight: 900;
+  color: #fff;
+  background: #2196f3;
+  border-radius: 3px;
+  padding: 0 2px;
+  line-height: 11px;
+}
+
+.cj-env-dot-test {
+  background: #ff9800;
+}
+
+.cj-env-dot-local {
+  background: #9c27b0;
+}
+
+.cj-sidebar-toggle {
+  position: relative;
+}
+
+/* Proxy status badge in sidebar */
+.cj-proxy-status {
+  padding: 6px 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+body.dark-mode .cj-proxy-status {
+  border-bottom-color: #333;
+}
+
+.cj-proxy-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.cj-proxy-on {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.cj-proxy-off {
+  background: #f5f5f5;
+  color: #999;
+}
+
+body.dark-mode .cj-proxy-on {
+  background: rgba(76, 175, 80, 0.15);
+  color: #66bb6a;
+}
+
+body.dark-mode .cj-proxy-off {
+  background: rgba(255,255,255,0.05);
+  color: #666;
+}
+
+/* Environment badge in sidebar */
+.cj-env-badge {
+  padding: 4px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  color: #fff;
+}
+
+.cj-env-test {
+  background: #ff9800;
+}
+
+.cj-env-local {
+  background: #9c27b0;
+}
+
+/* User avatar image */
+.cj-user-avatar-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/* Auto-login toast */
+.cj-auto-login-toast {
+  position: fixed;
+  top: 48px;
+  right: 16px;
+  z-index: 9999;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+  padding: 16px 20px;
+  max-width: 340px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  animation: cj-toast-in 0.3s ease;
+}
+
+body.dark-mode .cj-auto-login-toast {
+  background: #2a2d35;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+.cj-toast-success {
+  border-left: 4px solid #34c759;
+}
+
+.cj-toast-success .cj-toast-title {
+  color: #34c759;
+}
+
+body.dark-mode .cj-toast-success .cj-toast-title {
+  color: #30d158;
+}
+
+.cj-toast-fadeout {
+  animation: cj-toast-out 0.3s ease forwards;
+}
+
+@keyframes cj-toast-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cj-toast-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-12px); }
+}
+
+.cj-toast-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+body.dark-mode .cj-toast-title {
+  color: #eee;
+}
+
+.cj-toast-msg {
+  font-size: 12px;
+  color: #666;
+}
+
+body.dark-mode .cj-toast-msg {
+  color: #aaa;
+}
+
+/* Proxy Settings Section */
+.cj-proxy-settings {
+  padding: 8px 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+body.dark-mode .cj-proxy-settings {
+  border-bottom-color: #444;
+}
+
+.cj-proxy-mode-selector {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cj-proxy-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #555;
+}
+
+body.dark-mode .cj-proxy-mode-option {
+  color: #bbb;
+}
+
+.cj-proxy-mode-option input[type="radio"] {
+  margin: 0;
+  accent-color: #FF6B35;
+}
+
+/* Domain Empty State */
+.cj-domain-empty {
+  padding: 20px 16px;
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+}
+
+body.dark-mode .cj-domain-empty {
+  color: #777;
+}
+
+/* Proxy Switch Feedback */
+.cj-proxy-badge.cj-proxy-switching {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.cj-proxy-dot.switching {
+  animation: cj-dot-pulse 0.8s ease-in-out;
+}
+@keyframes cj-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.6); opacity: 0.5; }
+}
+
