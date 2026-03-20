@@ -600,16 +600,20 @@ var cjAutomate = {
 
   _handleVersionCheck: function (req, res) {
     var current = app.getVersion()
-    var result = { current: current, latest: current, updateAvailable: false, downloadUrl: '' }
+    var currentPlatformKey = (typeof cjUpdater !== 'undefined' && cjUpdater.getPlatformKey) ? cjUpdater.getPlatformKey() : ''
+    var currentPlatformLabel = (typeof cjUpdater !== 'undefined' && cjUpdater.getPlatformLabel) ? cjUpdater.getPlatformLabel(currentPlatformKey) : ''
+    var result = { current: current, latest: current, updateAvailable: false, downloadUrl: '', platformKey: currentPlatformKey, platformLabel: currentPlatformLabel, source: '' }
 
-    if (typeof cjUpdater !== 'undefined' && cjUpdater.lastNotifiedVersion) {
-      result.latest = cjUpdater.lastNotifiedVersion
-      result.updateAvailable = cjUpdater.compareVersions(cjUpdater.lastNotifiedVersion, current) > 0
-    }
-
-    var versionInfo = cjConfig ? cjConfig.getVersion() : null
-    if (versionInfo && versionInfo.downloadUrl) {
-      result.downloadUrl = versionInfo.downloadUrl
+    if (typeof cjUpdater !== 'undefined' && cjUpdater.getLatestVersionInfo) {
+      var latestInfo = cjUpdater.getLatestVersionInfo()
+      if (latestInfo && latestInfo.latest) {
+        result.latest = latestInfo.latest
+        result.updateAvailable = cjUpdater.compareVersions(latestInfo.latest, current) > 0
+        result.downloadUrl = latestInfo.downloadUrl || ''
+        result.platformKey = latestInfo.platformKey || ''
+        result.platformLabel = latestInfo.platformLabel || ''
+        result.source = latestInfo.source || ''
+      }
     }
 
     cjAutomate._sendJson(res, 200, result)

@@ -241,10 +241,24 @@ function createWindow (customArgs = {}) {
   return createWindowWithBounds(bounds, customArgs)
 }
 
-function createWindowWithBounds (bounds, customArgs) {
-  const windowIconPath = path.join(__dirname, 'icons', process.platform === 'win32' ? 'icon256.ico' : 'icon512.png')
+function getApplicationIconPath () {
+  if (process.platform === 'win32') {
+    return path.join(__dirname, 'icons', 'icon256.ico')
+  }
 
-  const newWin = new BaseWindow({
+  if (process.platform === 'darwin') {
+    if (app.isPackaged) {
+      return null
+    }
+    return path.join(__dirname, 'icons', 'icon.iconset', 'icon_512x512@2x.png')
+  }
+
+  return path.join(__dirname, 'icons', 'icon512.png')
+}
+
+function createWindowWithBounds (bounds, customArgs) {
+  const windowIconPath = getApplicationIconPath()
+  const windowOptions = {
     width: bounds.width,
     height: bounds.height,
     x: bounds.x,
@@ -253,11 +267,16 @@ function createWindowWithBounds (bounds, customArgs) {
     minHeight: 350,
     titleBarStyle: settings.get('useSeparateTitlebar') ? 'default' : 'hidden',
     trafficLightPosition: { x: 12, y: 10 },
-    icon: windowIconPath,
     frame: settings.get('useSeparateTitlebar'),
     alwaysOnTop: settings.get('windowAlwaysOnTop'),
     backgroundColor: '#fff', // the value of this is ignored, but setting it seems to work around https://github.com/electron/electron/issues/10559
-  })
+  }
+
+  if (windowIconPath) {
+    windowOptions.icon = windowIconPath
+  }
+
+  const newWin = new BaseWindow(windowOptions)
 
   // windows and linux always use a menu button in the upper-left corner instead
   // if frame: false is set, this won't have any effect, but it does apply on Linux if "use separate titlebar" is enabled
@@ -424,8 +443,8 @@ app.on('ready', function () {
   appIsReady = true
 
   // CJ Browser: Set Dock icon on macOS (dev mode shows Electron default otherwise)
-  if (process.platform === 'darwin' && app.dock) {
-    app.dock.setIcon(path.join(__dirname, 'icons', 'icon512.png'))
+  if (process.platform === 'darwin' && app.dock && !app.isPackaged) {
+    app.dock.setIcon(getApplicationIconPath())
   }
 
   /* the installer launches the app to install registry items and shortcuts,

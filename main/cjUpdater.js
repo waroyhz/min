@@ -3,13 +3,16 @@
 /* electron modules: app, dialog, ipc, shell, net are available from main.js */
 /* cjConfig available from earlier concatenation */
 
-var CJ_OSS_LATEST_URL = 'https://cj-front-end.oss-cn-hangzhou.aliyuncs.com/CJBrowser/latest.json'
+var CJ_OSS_WINDOWS_LATEST_URL = 'https://cj-front-end.oss-cn-hangzhou.aliyuncs.com/CJBrowser/latest.json'
+var CJ_OSS_MAC_ARM64_LATEST_URL = 'https://cj-front-end.oss-cn-hangzhou.aliyuncs.com/CJBrowser/latest-mac-arm64.json'
+var CJ_OSS_MAC_X86_LATEST_URL = 'https://cj-front-end.oss-cn-hangzhou.aliyuncs.com/CJBrowser/latest-mac-x86.json'
 var CJ_UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000 // 每 30 分钟检查一次
 
 var cjUpdater = {
   initialized: false,
   dismissed: false,
   lastNotifiedVersion: null,
+  lastVersionInfo: null,
   checkTimer: null,
 
   initialize: function () {
@@ -44,22 +47,69 @@ var cjUpdater = {
       cjUpdater.dismissed = true
     })
 
-    console.log('[CJ Updater] Initialized (OSS + backend, non-blocking)')
+    console.log('[CJ Updater] Initialized (platform=' + cjUpdater.getPlatformKey() + ', oss-only, non-blocking)')
+  },
+
+  getPlatformKey: function () {
+    if (process.platform === 'darwin') {
+      return process.arch === 'arm64' ? 'mac-arm64' : 'mac-x86'
+    }
+    return 'windows'
+  },
+
+  getPlatformLabel: function (platformKey) {
+    switch (platformKey || cjUpdater.getPlatformKey()) {
+      case 'mac-arm64':
+        return 'macOS'
+      case 'mac-x86':
+        return 'macOS'
+      default:
+        return 'Windows'
+    }
+  },
+
+  getLatestManifestUrl: function () {
+    switch (cjUpdater.getPlatformKey()) {
+      case 'mac-arm64':
+        return CJ_OSS_MAC_ARM64_LATEST_URL
+      case 'mac-x86':
+        return CJ_OSS_MAC_X86_LATEST_URL
+      default:
+        return CJ_OSS_WINDOWS_LATEST_URL
+    }
+  },
+
+  rememberVersionInfo: function (info) {
+    if (!info || !info.latest) {
+      return
+    }
+
+    cjUpdater.lastVersionInfo = {
+      latest: info.latest,
+      downloadUrl: info.downloadUrl || '',
+      sha256: info.sha256 || '',
+      releaseNotes: info.releaseNotes || '',
+      source: info.source || 'oss',
+      platformKey: info.platformKey || cjUpdater.getPlatformKey(),
+      platformLabel: info.platformLabel || cjUpdater.getPlatformLabel(info.platformKey)
+    }
+  },
+
+  getLatestVersionInfo: function () {
+    return cjUpdater.lastVersionInfo
   },
 
   /**
-   * 主检查流程: 先查 OSS latest.json, 再 fallback 到 backend config
+   * 主检查流程: 直接查 OSS 平台版本索引
    */
   checkForUpdate: function () {
     cjUpdater.checkFromOSS().then(function (ossInfo) {
       if (ossInfo) {
+        cjUpdater.rememberVersionInfo(ossInfo)
         cjUpdater.notifyIfNewer(ossInfo)
-      } else {
-        // fallback: backend config 中的 version
-        cjUpdater.checkFromBackendConfig()
       }
     }).catch(function () {
-      cjUpdater.checkFromBackendConfig()
+      cjUpdater.lastVersionInfo = null
     })
   },
 
@@ -69,7 +119,9 @@ var cjUpdater = {
   checkFromOSS: function () {
     return new Promise(function (resolve) {
       try {
-        var request = net.request({ method: 'GET', url: CJ_OSS_LATEST_URL })
+        var manifestUrl = cjUpdater.getLatestManifestUrl()
+        var platformKey = cjUpdater.getPlatformKey()
+        var request = net.request({ method: 'GET', url: manifestUrl })
         var body = ''
 
         request.on('response', function (response) {
@@ -83,7 +135,10 @@ var cjUpdater = {
                   downloadUrl: info.downloadUrl || '',
                   sha256: info.sha256 || '',
                   releaseNotes: info.releaseNotes || '',
-                  source: 'oss'
+                  source: 'oss',
+                  platformKey: platformKey,
+                  platformLabel: cjUpdater.getPlatformLabel(platformKey),
+                  manifestUrl: manifestUrl
                 })
               } else {
                 resolve(null)
@@ -100,21 +155,6 @@ var cjUpdater = {
         resolve(null)
       }
     })
-  },
-
-  /**
-   * Fallback: 使用 backend config 已返回的版本信息
-   */
-  checkFromBackendConfig: function () {
-    var versionInfo = cjConfig.getVersion()
-    if (versionInfo && versionInfo.latest) {
-      cjUpdater.notifyIfNewer({
-        latest: versionInfo.latest,
-        downloadUrl: versionInfo.downloadUrl || '',
-        releaseNotes: versionInfo.releaseNotes || '',
-        source: 'backend'
-      })
-    }
   },
 
   /**
@@ -141,7 +181,9 @@ var cjUpdater = {
       latestVersion: info.latest,
       downloadUrl: info.downloadUrl,
       releaseNotes: info.releaseNotes,
-      source: info.source
+      source: info.source,
+      platformKey: info.platformKey || cjUpdater.getPlatformKey(),
+      platformLabel: info.platformLabel || cjUpdater.getPlatformLabel(info.platformKey)
     }
 
     console.log('[CJ Updater] New version available: v' + info.latest + ' (current: v' + current + ', source: ' + info.source + ')')
