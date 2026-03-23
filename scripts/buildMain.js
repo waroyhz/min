@@ -16,6 +16,7 @@ const modules = [
   'main/cjTracker.js',
   'main/cjUpdater.js',
   'main/cjScripts.js',
+  'main/cjAutomationAssistant.js',
   'main/cjAutomate.js',
   'main/main.js',
   'main/minInternalProtocol.js',

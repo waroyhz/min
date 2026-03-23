@@ -201,6 +201,7 @@ const webviews = {
   },
   add: function (tabId, existingViewId) {
     var tabData = tabs.get(tabId)
+    var profileInfo = null
 
     // needs to be called before the view is created to that its listeners can be registered
     if (tabData.scrollPosition) {
@@ -215,6 +216,15 @@ const webviews = {
     // since tab IDs are unique, we can use them as partition names
     if (tabData.private === true) {
       var partition = tabId.toString() // options.tabId is a number, which remote.session.fromPartition won't accept. It must be converted to a string first
+    } else {
+      try {
+        profileInfo = ipc.sendSync('cj-automation-get-tab-partition', { tabId: tabId })
+        if (profileInfo && profileInfo.partition) {
+          partition = profileInfo.partition
+        }
+      } catch (e) {
+        console.warn('[CJ Automation] Failed to read tab partition:', e.message)
+      }
     }
 
     ipc.send('createView', {

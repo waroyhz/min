@@ -38,7 +38,12 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
 
   viewStateMap[id] = {
     loadedInitialURL: false,
-    hasJS: viewPrefs.javascript // need this later to see if we should swap the view for a JS-enabled one
+    hasJS: viewPrefs.javascript, // need this later to see if we should swap the view for a JS-enabled one
+    creationOptions: {
+      boundsString: boundsString,
+      events: (events || []).slice(),
+      webPreferences: Object.assign({}, viewPrefs)
+    }
   }
 
   let view
@@ -337,6 +342,32 @@ function hideCurrentView (senderContents) {
 
 function getView (id) {
   return viewMap[id]
+}
+
+function recreateViewWithWebPreferences (id, webPreferences, url, win) {
+  if (!viewMap[id] || !viewStateMap[id] || !viewStateMap[id].creationOptions) {
+    return false
+  }
+
+  var creationOptions = viewStateMap[id].creationOptions
+  var nextPreferences = Object.assign({}, creationOptions.webPreferences || getDefaultViewWebPreferences(), webPreferences || {})
+  var boundsString = creationOptions.boundsString || JSON.stringify({ x: 0, y: 0, width: 1280, height: 900 })
+  var events = (creationOptions.events || []).slice()
+  var targetWindow = win || getWindowFromViewContents(viewMap[id].webContents) || windows.getCurrent()
+
+  destroyView(id)
+  createView(null, id, nextPreferences, boundsString, events)
+
+  if (url) {
+    loadURLInView(id, url, targetWindow)
+  }
+
+  if (targetWindow) {
+    setView(id, getWindowWebContents(targetWindow))
+    focusView(id)
+  }
+
+  return true
 }
 
 function getTabIDFromWebContents (contents) {

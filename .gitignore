@@ -7,3 +7,12 @@ main.build.js
 .DS_Store
 package-lock.json
 yarn.lock
+
+# CJ custom overlay files (patched in from cj-custom/, must not be in public repo)
+main/cj*.js
+js/navbar/cjSidebar.js
+js/util/proxy.js
+css/cjSidebar.css
+pages/error/error.js
+.npmrc
+nul

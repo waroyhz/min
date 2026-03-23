@@ -108,6 +108,32 @@ ipc.on('cj-proxy-refresh-current-tab', function () {
   webviews.callAsync(selectedTab, 'reloadIgnoringCache')
 })
 
+ipc.on('cj-automation-create-tab', function (event, data) {
+  var payload = data || {}
+  var newTab = tabs.add({
+    url: payload.url || ''
+  })
+
+  if (payload.profileId) {
+    ipc.send('cj-automation-set-tab-profile', {
+      tabId: newTab,
+      profileId: payload.profileId
+    })
+  }
+
+  require('browserUI.js').addTab(newTab, {
+    enterEditMode: !payload.url,
+    openInBackground: !!payload.openInBackground
+  })
+
+  ipc.send('cj-automation-create-tab-result', {
+    requestId: payload.requestId,
+    tabId: newTab,
+    url: payload.url || '',
+    profileId: payload.profileId || ''
+  })
+})
+
 // https://remysharp.com/2010/07/21/throttling-function-calls
 
 window.throttle = function (fn, threshhold, scope) {
