@@ -210,6 +210,14 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
 
   view.webContents.on('did-start-navigation', handleExternalProtocol)
 
+  // CJ Browser: Collect console messages into in-memory ring buffer
+  view.webContents.on('console-message', function (event, level, message, line, sourceId) {
+    if (typeof cjAutomate !== 'undefined' && cjAutomate.appendTabLog) {
+      var levelNames = ['verbose', 'info', 'warning', 'error']
+      cjAutomate.appendTabLog(id, levelNames[level] || 'log', message, sourceId, line)
+    }
+  })
+
   // CJ Browser: Track page navigation for operation logging
   view.webContents.on('did-finish-load', function () {
     try {
@@ -223,6 +231,14 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
         }
         if (cjConfig && typeof cjConfig.handleRecoveredPage === 'function') {
           cjConfig.handleRecoveredPage(url, view.webContents)
+        }
+        // CJ Browser: Auto-detect Cloudflare Turnstile widget on page load
+        if (typeof cjAutomationAssistant !== 'undefined' && cjAutomationAssistant._isCfBlocked) {
+          cjAutomationAssistant._isCfBlocked(view.webContents).then(function (blocked) {
+            if (blocked) {
+              console.log('[CJ View] Cloudflare Turnstile detected on ' + url.substring(0, 80) + ' (tab ' + id + ')')
+            }
+          }).catch(function () {})
         }
       }
     } catch (e) {

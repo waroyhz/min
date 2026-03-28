@@ -75,8 +75,37 @@ if (isDevelopmentMode) {
 // workaround for flicker when focusing app (https://github.com/electron/electron/issues/17942)
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows', 'true')
 
+// CJ Browser: Anti-automation detection — prevents navigator.webdriver = true
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
+
+// CJ Browser: Disable Client Hints to prevent Sec-CH-UA header exposing non-Chrome identity
+// (Chromium's Sec-CH-UA only includes "Chromium" brand, missing "Google Chrome" — signals non-standard browser to CF)
+app.commandLine.appendSwitch('disable-features', 'UserAgentClientHint')
+
 var cjPlaywrightCDPPort = parseInt(process.env.CJ_PLAYWRIGHT_CDP_PORT || '9222', 10)
 if (!isNaN(cjPlaywrightCDPPort) && cjPlaywrightCDPPort > 0) {
+  // Check port availability and auto-increment if in use
+  var cjCpExec = require('child_process')
+  var maxPortAttempts = 10
+  for (var portAttempt = 0; portAttempt < maxPortAttempts; portAttempt++) {
+    var testCdpPort = cjPlaywrightCDPPort + portAttempt
+    try {
+      if (process.platform === 'win32') {
+        cjCpExec.execSync('netstat -ano | findstr "LISTENING" | findstr ":' + testCdpPort + ' "', { stdio: 'ignore' })
+      } else {
+        cjCpExec.execSync('lsof -i :' + testCdpPort + ' -sTCP:LISTEN', { stdio: 'ignore' })
+      }
+      // Command succeeded = port is in use, try next
+      console.log('[CJ Browser] CDP port ' + testCdpPort + ' in use, trying ' + (testCdpPort + 1))
+    } catch (e) {
+      // Command failed = port is free
+      cjPlaywrightCDPPort = testCdpPort
+      break
+    }
+  }
+  if (cjPlaywrightCDPPort !== parseInt(process.env.CJ_PLAYWRIGHT_CDP_PORT || '9222', 10)) {
+    console.log('[CJ Browser] Using CDP port ' + cjPlaywrightCDPPort + ' (auto-incremented)')
+  }
   app.commandLine.appendSwitch('remote-debugging-port', String(cjPlaywrightCDPPort))
 }
 
@@ -462,6 +491,7 @@ app.on('ready', function () {
   createDockMenu()
 
   // CJ Browser: Initialize CJ modules
+  cjStealth.initialize()
   cjAuth.initialize(userDataPath)
   cjTracker.initialize()
 
@@ -518,7 +548,17 @@ app.on('ready', function () {
   ipc.on('cj-proxy-set-mode', function (e, mode) {
     if (mode === 'company') {
       if (typeof updateProxyFromConfig === 'function') {
-        updateProxyFromConfig()
+        var result = updateProxyFromConfig()
+        if (result && typeof result.then === 'function') {
+          result.then(function (success) {
+            if (!success) {
+              // Notify sidebar that proxy switch failed
+              windows.getAll().forEach(function (win) {
+                getWindowWebContents(win).send('cj-proxy-refresh-current-tab', { mode: 'direct', reason: 'no-proxy-config' })
+              })
+            }
+          })
+        }
       }
     } else if (mode === 'direct') {
       if (typeof applyCJProxy === 'function') {
