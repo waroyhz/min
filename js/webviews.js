@@ -181,11 +181,11 @@ const webviews = {
         height: window.innerHeight
       }
     } else {
-      if (!hasSeparateTitlebar && (window.platformType === 'linux' || window.platformType === 'windows') && !windowIsMaximized && !windowIsFullscreen) {
-        var navbarHeight = 48
-      } else {
-        var navbarHeight = 36
-      }
+      /**
+       * @correction #260330#9
+       * 顶部空隙移除后，导航栏高度统一按36计算，避免webview与地址栏错位。
+       */
+      var navbarHeight = 36
 
       const viewMargins = webviews.viewMargins
 

@@ -19,6 +19,7 @@ const modules = [
   'main/cjOsInput.js',
   'main/cjAutomationAssistant.js',
   'main/cjStealth.js',
+  'main/cjScreenRecorder.js',
   'main/cjAutomate.js',
   'main/main.js',
   'main/minInternalProtocol.js',

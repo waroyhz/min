@@ -219,10 +219,24 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
   })
 
   // CJ Browser: Track page navigation for operation logging
+  /**
+   * @correction #2108#8 did-start-navigation和did-finish-load事件都写入ring buffer，
+   * 记录每次页面跳转的URL，日志驻留在主进程不随页面销毁丢失。
+   */
+  view.webContents.on('did-start-navigation', function (event, url, isInPlace, isMainFrame) {
+    if (isMainFrame && typeof cjAutomate !== 'undefined' && cjAutomate.appendTabLog) {
+      cjAutomate.appendTabLog(id, 'navigate', '[NAV-START] ' + (url || ''))
+    }
+  })
+
   view.webContents.on('did-finish-load', function () {
     try {
       var url = view.webContents.getURL()
       var title = view.webContents.getTitle()
+      // @correction #2108#8 页面加载完成写入ring buffer
+      if (typeof cjAutomate !== 'undefined' && cjAutomate.appendTabLog) {
+        cjAutomate.appendTabLog(id, 'load', '[NAV-LOADED] ' + (url || '') + ' title=' + (title || ''))
+      }
       if (url && !url.startsWith('min://') && url !== 'about:blank') {
         cjTracker.trackPageView(url, title, id)
         // CJ Browser: Check for auto-login on CJ domains
@@ -232,11 +246,19 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
         if (cjConfig && typeof cjConfig.handleRecoveredPage === 'function') {
           cjConfig.handleRecoveredPage(url, view.webContents)
         }
-        // CJ Browser: Auto-detect Cloudflare Turnstile widget on page load
+        /**
+         * CF Turnstile 自动检测与跳过 — 浏览器基础可复用能力
+         * @correction 1549补充#6 CF跳过作为基础能力，页面加载时自动检测并触发bypass
+         *             在非录制/回放模式下仅检测并记录，在自动化上下文中自动触发bypass
+         */
         if (typeof cjAutomationAssistant !== 'undefined' && cjAutomationAssistant._isCfBlocked) {
           cjAutomationAssistant._isCfBlocked(view.webContents).then(function (blocked) {
             if (blocked) {
               console.log('[CJ View] Cloudflare Turnstile detected on ' + url.substring(0, 80) + ' (tab ' + id + ')')
+              // Emit event for automation context to handle
+              if (typeof cjAutomationAssistant._onCfDetected === 'function') {
+                cjAutomationAssistant._onCfDetected(id, view.webContents, url)
+              }
             }
           }).catch(function () {})
         }
@@ -245,6 +267,20 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
       console.warn('[CJ View] did-finish-load error:', e.message)
     }
   })
+
+  /**
+   * @correction #2304#9 CDP永不释放 — 浏览器启动时即加载CDP
+   * 每个view创建后立即attach CDP debugger，确保CDP始终可用。
+   * 如需修改此方案，请与项目负责人确认。
+   */
+  try {
+    if (!view.webContents.debugger.isAttached()) {
+      view.webContents.debugger.attach('1.3')
+      console.log('[CJ View] CDP auto-attached for tab ' + id + ' (per #2304#9 policy)')
+    }
+  } catch (cdpErr) {
+    console.warn('[CJ View] CDP auto-attach failed for tab ' + id + ': ' + cdpErr.message)
+  }
 
   /*
   It's possible for an HTTP request to redirect to an external app link
@@ -328,6 +364,9 @@ function setView (id, senderContents) {
 
 function setBounds (id, bounds) {
   if (viewMap[id]) {
+    /**
+     * @correction 第24次提交: CF新窗口方案不再移动view，无需拦截setBounds。
+     */
     viewMap[id].setBounds(bounds)
   }
 }

@@ -180,31 +180,41 @@ var saveWindowBounds = function () {
   }
 }
 
+/**
+ * @correction 第24次提交(#23补充#9): 包裹整个函数体防止"Render frame was disposed"崩溃。
+ * 当窗口WebContents在IPC发送过程中被销毁时（如关闭窗口），会抛出异常。
+ */
 function sendIPCToWindow (window, action, data) {
-  if (window && window.isDestroyed()) {
-    console.warn('ignoring message ' + action + ' sent to destroyed window')
-    return
-  }
+  try {
+    if (window && window.isDestroyed()) {
+      return
+    }
 
-  if (window && getWindowWebContents(window).isLoadingMainFrame()) {
-    // immediately after a did-finish-load event, isLoading can still be true,
-    // so wait a bit to confirm that the page is really loading
-    setTimeout(function() {
-      if (getWindowWebContents(window).isLoadingMainFrame()) {
-        getWindowWebContents(window).once('did-finish-load', function () {
-          getWindowWebContents(window).send(action, data || {})
-        })
-      } else {
-         getWindowWebContents(window).send(action, data || {})
-      }
-    }, 0)
-  } else if (window) {
-    getWindowWebContents(window).send(action, data || {})
-  } else {
-    var window = createWindow()
-    getWindowWebContents(window).once('did-finish-load', function () {
+    if (window && getWindowWebContents(window).isLoadingMainFrame()) {
+      // immediately after a did-finish-load event, isLoading can still be true,
+      // so wait a bit to confirm that the page is really loading
+      setTimeout(function() {
+        try {
+          if (window.isDestroyed()) return
+          if (getWindowWebContents(window).isLoadingMainFrame()) {
+            getWindowWebContents(window).once('did-finish-load', function () {
+              try { getWindowWebContents(window).send(action, data || {}) } catch (e) {}
+            })
+          } else {
+            getWindowWebContents(window).send(action, data || {})
+          }
+        } catch (e) { /* Render frame disposed during deferred send */ }
+      }, 0)
+    } else if (window) {
       getWindowWebContents(window).send(action, data || {})
-    })
+    } else {
+      var window = createWindow()
+      getWindowWebContents(window).once('did-finish-load', function () {
+        try { getWindowWebContents(window).send(action, data || {}) } catch (e) {}
+      })
+    }
+  } catch (e) {
+    // Render frame was disposed before WebFrameMain could be accessed — safe to ignore
   }
 }
 
@@ -525,7 +535,10 @@ app.on('ready', function () {
 
   // CJ Browser: Handle SSL certificate errors (corporate proxy environments)
   app.on('certificate-error', function (event, webContents, url, error, certificate, callback) {
-    console.warn('[CJ Browser] Certificate error for', url, ':', error)
+    // @correction #260329#5 minbrowser.org 证书过期是已知问题，静默处理
+    if (url.indexOf('minbrowser.org') === -1) {
+      console.warn('[CJ Browser] Certificate error for', url, ':', error)
+    }
     event.preventDefault()
     callback(true)
   })
