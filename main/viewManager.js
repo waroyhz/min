@@ -250,8 +250,10 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
          * CF Turnstile 自动检测与跳过 — 浏览器基础可复用能力
          * @correction 1549补充#6 CF跳过作为基础能力，页面加载时自动检测并触发bypass
          *             在非录制/回放模式下仅检测并记录，在自动化上下文中自动触发bypass
+         * @correction #1556#6 跳过localhost/内部页面减少CDP调用降低CPU占用
          */
-        if (typeof cjAutomationAssistant !== 'undefined' && cjAutomationAssistant._isCfBlocked) {
+        if (typeof cjAutomationAssistant !== 'undefined' && cjAutomationAssistant._isCfBlocked
+            && url.indexOf('localhost') === -1 && url.indexOf('127.0.0.1') === -1 && !url.startsWith('min://')) {
           cjAutomationAssistant._isCfBlocked(view.webContents).then(function (blocked) {
             if (blocked) {
               console.log('[CJ View] Cloudflare Turnstile detected on ' + url.substring(0, 80) + ' (tab ' + id + ')')
@@ -350,7 +352,8 @@ function setView (id, senderContents) {
 
   // changing views can cause flickering, so we only want to call it if the view is actually changing
   // see https://github.com/minbrowser/min/issues/1966
-  if (windows.getState(win).selectedView !== viewMap[id]) {
+  // @correction #1556#7#8 修复比较: selectedView存储id(string), 应与id比较而非viewMap[id](object)
+  if (windows.getState(win).selectedView !== id) {
     //remove all prior views
     win.getContentView().children.slice(1).forEach(child => win.getContentView().removeChildView(child))
     if (viewStateMap[id].loadedInitialURL) {
@@ -453,6 +456,18 @@ ipc.on('destroyAllViews', function () {
 ipc.on('setView', function (e, args) {
   setView(args.id, e.sender)
   setBounds(args.id, args.bounds)
+  /**
+   * @correction #1938 延迟刷新bounds修复切换tab后webview不显示
+   * Electron WebContentsView 在同一事件循环中 addChildView + setBounds
+   * 可能不触发 Native 重绘。延迟一帧再次 setBounds 强制合成器刷新。
+   */
+  var deferredId = args.id
+  var deferredBounds = args.bounds
+  setTimeout(function () {
+    if (viewMap[deferredId]) {
+      viewMap[deferredId].setBounds(deferredBounds)
+    }
+  }, 16)
   if (args.focus && BrowserWindow.fromWebContents(e.sender) && BrowserWindow.fromWebContents(e.sender).isFocused()) {
     const couldFocus = focusView(args.id)
     if (!couldFocus) {

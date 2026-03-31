@@ -2,7 +2,7 @@
   "name": "min",
   "productName": "CJBrowser",
   "author": "PalmerAL",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "CJBrowser desktop workspace built from a clean Min staging tree",
   "electronVersion": "40.6.1",
   "main": "main.build.js",
