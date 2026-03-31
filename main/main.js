@@ -502,14 +502,16 @@ app.on('ready', function () {
 
   // CJ Browser: Initialize CJ modules
   cjStealth.initialize()
-  cjAuth.initialize(userDataPath)
   cjTracker.initialize()
 
   // Initialize environment configuration
   cjConfig.initializeEnv()
 
-  // Fetch backend config, then PAC domains, then apply proxy
-  cjConfig.fetchConfig(cjAuth.getToken()).then(function () {
+  // #1600: cjAuth.initialize returns Promise (cookie-based token load)
+  cjAuth.initialize(userDataPath).then(function () {
+    // Fetch backend config, then PAC domains, then apply proxy
+    return cjConfig.fetchConfig(cjAuth.getToken())
+  }).then(function () {
     // Send domain list to all windows
     windows.getAll().forEach(function (win) {
       getWindowWebContents(win).send('cj-domains-updated', cjConfig.getDomains())
