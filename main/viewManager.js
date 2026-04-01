@@ -239,6 +239,10 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
       }
       if (url && !url.startsWith('min://') && url !== 'about:blank') {
         cjTracker.trackPageView(url, title, id)
+        // @since #1331#2 环境同步: 检测第三方服务导航
+        if (typeof cjEnvSync !== 'undefined' && cjEnvSync.onPageNavigate) {
+          cjEnvSync.onPageNavigate(url)
+        }
         // CJ Browser: Check for auto-login on CJ domains
         if (url.indexOf('cjdropshipping') !== -1 && cjAuth && typeof cjAuth.checkAutoLogin === 'function') {
           cjAuth.checkAutoLogin(url, view.webContents)

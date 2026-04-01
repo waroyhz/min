@@ -535,6 +535,9 @@ app.on('ready', function () {
   // CJ Browser: Initialize AI Automation API
   cjAutomate.initialize()
 
+  // CJ Browser: Initialize Environment Sync (grok etc.)
+  cjEnvSync.initialize()
+
   // CJ Browser: Handle SSL certificate errors (corporate proxy environments)
   app.on('certificate-error', function (event, webContents, url, error, certificate, callback) {
     // @correction #260329#5 minbrowser.org 证书过期是已知问题，静默处理
