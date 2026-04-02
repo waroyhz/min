@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>CF Bypass Status</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; font-size: 12px; overflow-y: auto; padding: 8px; }
+h2 { font-size: 13px; color: #00d2ff; margin-bottom: 6px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+.phase { margin-bottom: 8px; padding: 6px; background: #16213e; border-radius: 4px; border-left: 3px solid #555; }
+.phase.active { border-left-color: #ffc107; }
+.phase.done { border-left-color: #4caf50; }
+.phase.fail { border-left-color: #f44336; }
+.phase-title { font-weight: bold; font-size: 12px; margin-bottom: 2px; }
+.phase-detail { color: #aaa; font-size: 11px; }
+.log-area { margin-top: 8px; max-height: 200px; overflow-y: auto; background: #0d1117; border-radius: 4px; padding: 6px; font-family: 'Consolas', monospace; font-size: 10px; line-height: 1.4; }
+.log-entry { margin-bottom: 1px; word-break: break-all; }
+.log-entry.info { color: #8b949e; }
+.log-entry.success { color: #3fb950; }
+.log-entry.warn { color: #d29922; }
+.log-entry.error { color: #f85149; }
+.ai-section { margin-top: 8px; padding: 6px; background: #1e2a3a; border-radius: 4px; border: 1px solid #30394a; }
+.ai-label { color: #58a6ff; font-weight: bold; font-size: 11px; }
+.ai-content { color: #c9d1d9; font-size: 11px; margin-top: 2px; }
+.stats { display: flex; gap: 8px; margin-bottom: 8px; }
+.stat { flex: 1; text-align: center; padding: 4px; background: #16213e; border-radius: 4px; }
+.stat-val { font-size: 16px; font-weight: bold; color: #00d2ff; }
+.stat-lbl { font-size: 10px; color: #888; }
+</style>
+</head>
+<body>
+<h2>🔒 CF Bypass 状态</h2>
+<div class="stats">
+  <div class="stat"><div class="stat-val" id="attempt">0</div><div class="stat-lbl">自动化尝试</div></div>
+  <div class="stat"><div class="stat-val" id="aiRound">0</div><div class="stat-lbl">AI轮次</div></div>
+  <div class="stat"><div class="stat-val" id="elapsed">0s</div><div class="stat-lbl">耗时</div></div>
+</div>
+<div id="phases">
+  <div class="phase" id="p1"><div class="phase-title">Phase 1: 自动等待</div><div class="phase-detail">等待CF自动通过...</div></div>
+  <div class="phase" id="p2"><div class="phase-title">Phase 2: 自动化点击 (0/3)</div><div class="phase-detail">JS检测+CDP点击</div></div>
+  <div class="phase" id="p3"><div class="phase-title">Phase 3: AI分析 (0/5)</div><div class="phase-detail">qwen3.5-plus 截图分析</div></div>
+</div>
+<div class="ai-section" id="aiSection" style="display:none">
+  <div class="ai-label">🤖 AI 分析</div>
+  <div class="ai-content" id="aiContent">等待中...</div>
+</div>
+<h2 style="margin-top:8px">📋 日志</h2>
+<div class="log-area" id="logArea"></div>
+<script>
+var startTime = Date.now();
+var logArea = document.getElementById('logArea');
+var elapsedEl = document.getElementById('elapsed');
+setInterval(function() {
+  elapsedEl.textContent = Math.round((Date.now() - startTime) / 1000) + 's';
+}, 1000);
+
+window._cfStatusUpdate = function(data) {
+  if (data.phase) {
+    var phases = ['p1','p2','p3'];
+    phases.forEach(function(id, i) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.className = 'phase';
+      if (i + 1 < data.phase) el.className = 'phase done';
+      else if (i + 1 === data.phase) el.className = 'phase active';
+    });
+  }
+  if (data.attempt != null) document.getElementById('attempt').textContent = data.attempt;
+  if (data.aiRound != null) document.getElementById('aiRound').textContent = data.aiRound;
+  if (data.p2text) document.getElementById('p2').querySelector('.phase-title').textContent = 'Phase 2: 自动化点击 (' + (data.attempt || 0) + '/3)';
+  if (data.p3text) document.getElementById('p3').querySelector('.phase-title').textContent = 'Phase 3: AI分析 (' + (data.aiRound || 0) + '/5)';
+  if (data.aiResult) {
+    document.getElementById('aiSection').style.display = 'block';
+    document.getElementById('aiContent').textContent = typeof data.aiResult === 'string' ? data.aiResult : JSON.stringify(data.aiResult);
+  }
+  if (data.resolved) {
+    var phases2 = document.querySelectorAll('.phase');
+    for (var i = 0; i < phases2.length; i++) phases2[i].className = 'phase done';
+  }
+};
+
+window._cfLogAppend = function(msg, level) {
+  var entry = document.createElement('div');
+  entry.className = 'log-entry ' + (level || 'info');
+  entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  logArea.appendChild(entry);
+  logArea.scrollTop = logArea.scrollHeight;
+  if (logArea.children.length > 200) logArea.removeChild(logArea.children[0]);
+};
+</script>
+</body>
+</html>

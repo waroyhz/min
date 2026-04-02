@@ -9,7 +9,8 @@ if (settings.get('customUserAgent')) {
   newUserAgent = settings.get('customUserAgent')
   hasCustomUserAgent = true
 } else {
-  newUserAgent = defaultUserAgent.replace(/Min\/\S+\s/, '').replace(/Electron\/\S+\s/, '').replace(process.versions.chrome, process.versions.chrome.split('.').map((v, idx) => (idx === 0) ? v : '0').join('.'))
+  // CJ Browser: Use full Chrome version (not zeroed) to match real Chrome fingerprint
+  newUserAgent = defaultUserAgent.replace(/Min\/\S+\s/, '').replace(/Electron\/\S+\s/, '').replace(/CJBrowser\/\S+\s/, '')
 }
 app.userAgentFallback = newUserAgent
 
@@ -56,8 +57,9 @@ function enableGoogleUASwitcher (ses) {
       }
     }
 
+    // CJ Browser: Include "Google Chrome" brand to match real Chrome fingerprint
     const chromiumVersion = process.versions.chrome.split('.')[0]
-    details.requestHeaders['SEC-CH-UA'] = `"Chromium";v="${chromiumVersion}", " Not A;Brand";v="99"`
+    details.requestHeaders['SEC-CH-UA'] = `"Chromium";v="${chromiumVersion}", "Google Chrome";v="${chromiumVersion}", "Not(A:Brand";v="8"`
     details.requestHeaders['SEC-CH-UA-MOBILE'] = '?0'
 
     callback({ cancel: false, requestHeaders: details.requestHeaders })

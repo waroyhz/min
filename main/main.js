@@ -75,6 +75,40 @@ if (isDevelopmentMode) {
 // workaround for flicker when focusing app (https://github.com/electron/electron/issues/17942)
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows', 'true')
 
+// CJ Browser: Anti-automation detection — prevents navigator.webdriver = true
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
+
+// CJ Browser: Disable Client Hints to prevent Sec-CH-UA header exposing non-Chrome identity
+// (Chromium's Sec-CH-UA only includes "Chromium" brand, missing "Google Chrome" — signals non-standard browser to CF)
+app.commandLine.appendSwitch('disable-features', 'UserAgentClientHint')
+
+var cjPlaywrightCDPPort = parseInt(process.env.CJ_PLAYWRIGHT_CDP_PORT || '9222', 10)
+if (!isNaN(cjPlaywrightCDPPort) && cjPlaywrightCDPPort > 0) {
+  // Check port availability and auto-increment if in use
+  var cjCpExec = require('child_process')
+  var maxPortAttempts = 10
+  for (var portAttempt = 0; portAttempt < maxPortAttempts; portAttempt++) {
+    var testCdpPort = cjPlaywrightCDPPort + portAttempt
+    try {
+      if (process.platform === 'win32') {
+        cjCpExec.execSync('netstat -ano | findstr "LISTENING" | findstr ":' + testCdpPort + ' "', { stdio: 'ignore' })
+      } else {
+        cjCpExec.execSync('lsof -i :' + testCdpPort + ' -sTCP:LISTEN', { stdio: 'ignore' })
+      }
+      // Command succeeded = port is in use, try next
+      console.log('[CJ Browser] CDP port ' + testCdpPort + ' in use, trying ' + (testCdpPort + 1))
+    } catch (e) {
+      // Command failed = port is free
+      cjPlaywrightCDPPort = testCdpPort
+      break
+    }
+  }
+  if (cjPlaywrightCDPPort !== parseInt(process.env.CJ_PLAYWRIGHT_CDP_PORT || '9222', 10)) {
+    console.log('[CJ Browser] Using CDP port ' + cjPlaywrightCDPPort + ' (auto-incremented)')
+  }
+  app.commandLine.appendSwitch('remote-debugging-port', String(cjPlaywrightCDPPort))
+}
+
 // CJ Browser: Copiable error dialog utility
 function showCopyableError (title, message, detail) {
   var errorWin = new BrowserWindow({
@@ -146,31 +180,41 @@ var saveWindowBounds = function () {
   }
 }
 
+/**
+ * @correction 第24次提交(#23补充#9): 包裹整个函数体防止"Render frame was disposed"崩溃。
+ * 当窗口WebContents在IPC发送过程中被销毁时（如关闭窗口），会抛出异常。
+ */
 function sendIPCToWindow (window, action, data) {
-  if (window && window.isDestroyed()) {
-    console.warn('ignoring message ' + action + ' sent to destroyed window')
-    return
-  }
+  try {
+    if (window && window.isDestroyed()) {
+      return
+    }
 
-  if (window && getWindowWebContents(window).isLoadingMainFrame()) {
-    // immediately after a did-finish-load event, isLoading can still be true,
-    // so wait a bit to confirm that the page is really loading
-    setTimeout(function() {
-      if (getWindowWebContents(window).isLoadingMainFrame()) {
-        getWindowWebContents(window).once('did-finish-load', function () {
-          getWindowWebContents(window).send(action, data || {})
-        })
-      } else {
-         getWindowWebContents(window).send(action, data || {})
-      }
-    }, 0)
-  } else if (window) {
-    getWindowWebContents(window).send(action, data || {})
-  } else {
-    var window = createWindow()
-    getWindowWebContents(window).once('did-finish-load', function () {
+    if (window && getWindowWebContents(window).isLoadingMainFrame()) {
+      // immediately after a did-finish-load event, isLoading can still be true,
+      // so wait a bit to confirm that the page is really loading
+      setTimeout(function() {
+        try {
+          if (window.isDestroyed()) return
+          if (getWindowWebContents(window).isLoadingMainFrame()) {
+            getWindowWebContents(window).once('did-finish-load', function () {
+              try { getWindowWebContents(window).send(action, data || {}) } catch (e) {}
+            })
+          } else {
+            getWindowWebContents(window).send(action, data || {})
+          }
+        } catch (e) { /* Render frame disposed during deferred send */ }
+      }, 0)
+    } else if (window) {
       getWindowWebContents(window).send(action, data || {})
-    })
+    } else {
+      var window = createWindow()
+      getWindowWebContents(window).once('did-finish-load', function () {
+        try { getWindowWebContents(window).send(action, data || {}) } catch (e) {}
+      })
+    }
+  } catch (e) {
+    // Render frame was disposed before WebFrameMain could be accessed — safe to ignore
   }
 }
 
@@ -476,14 +520,17 @@ app.on('ready', function () {
   createDockMenu()
 
   // CJ Browser: Initialize CJ modules
-  cjAuth.initialize(userDataPath)
+  cjStealth.initialize()
   cjTracker.initialize()
 
   // Initialize environment configuration
   cjConfig.initializeEnv()
 
-  // Fetch backend config, then PAC domains, then apply proxy
-  cjConfig.fetchConfig(cjAuth.getToken()).then(function () {
+  // #1600: cjAuth.initialize returns Promise (cookie-based token load)
+  cjAuth.initialize(userDataPath).then(function () {
+    // Fetch backend config, then PAC domains, then apply proxy
+    return cjConfig.fetchConfig(cjAuth.getToken())
+  }).then(function () {
     // Send domain list to all windows
     windows.getAll().forEach(function (win) {
       getWindowWebContents(win).send('cj-domains-updated', cjConfig.getDomains())
@@ -507,9 +554,15 @@ app.on('ready', function () {
   // CJ Browser: Initialize AI Automation API
   cjAutomate.initialize()
 
+  // CJ Browser: Initialize Environment Sync (grok etc.)
+  cjEnvSync.initialize()
+
   // CJ Browser: Handle SSL certificate errors (corporate proxy environments)
   app.on('certificate-error', function (event, webContents, url, error, certificate, callback) {
-    console.warn('[CJ Browser] Certificate error for', url, ':', error)
+    // @correction #260329#5 minbrowser.org 证书过期是已知问题，静默处理
+    if (url.indexOf('minbrowser.org') === -1) {
+      console.warn('[CJ Browser] Certificate error for', url, ':', error)
+    }
     event.preventDefault()
     callback(true)
   })
@@ -532,7 +585,17 @@ app.on('ready', function () {
   ipc.on('cj-proxy-set-mode', function (e, mode) {
     if (mode === 'company') {
       if (typeof updateProxyFromConfig === 'function') {
-        updateProxyFromConfig()
+        var result = updateProxyFromConfig()
+        if (result && typeof result.then === 'function') {
+          result.then(function (success) {
+            if (!success) {
+              // Notify sidebar that proxy switch failed
+              windows.getAll().forEach(function (win) {
+                getWindowWebContents(win).send('cj-proxy-refresh-current-tab', { mode: 'direct', reason: 'no-proxy-config' })
+              })
+            }
+          })
+        }
       }
     } else if (mode === 'direct') {
       if (typeof applyCJProxy === 'function') {

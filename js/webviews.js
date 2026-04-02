@@ -181,11 +181,11 @@ const webviews = {
         height: window.innerHeight
       }
     } else {
-      if (!hasSeparateTitlebar && (window.platformType === 'linux' || window.platformType === 'windows') && !windowIsMaximized && !windowIsFullscreen) {
-        var navbarHeight = 48
-      } else {
-        var navbarHeight = 36
-      }
+      /**
+       * @correction #260330#9
+       * 顶部空隙移除后，导航栏高度统一按36计算，避免webview与地址栏错位。
+       */
+      var navbarHeight = 36
 
       const viewMargins = webviews.viewMargins
 
@@ -201,6 +201,7 @@ const webviews = {
   },
   add: function (tabId, existingViewId) {
     var tabData = tabs.get(tabId)
+    var profileInfo = null
 
     // needs to be called before the view is created to that its listeners can be registered
     if (tabData.scrollPosition) {
@@ -215,6 +216,15 @@ const webviews = {
     // since tab IDs are unique, we can use them as partition names
     if (tabData.private === true) {
       var partition = tabId.toString() // options.tabId is a number, which remote.session.fromPartition won't accept. It must be converted to a string first
+    } else {
+      try {
+        profileInfo = ipc.sendSync('cj-automation-get-tab-partition', { tabId: tabId })
+        if (profileInfo && profileInfo.partition) {
+          partition = profileInfo.partition
+        }
+      } catch (e) {
+        console.warn('[CJ Automation] Failed to read tab partition:', e.message)
+      }
     }
 
     ipc.send('createView', {

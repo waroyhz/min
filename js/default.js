@@ -108,6 +108,43 @@ ipc.on('cj-proxy-refresh-current-tab', function () {
   webviews.callAsync(selectedTab, 'reloadIgnoringCache')
 })
 
+ipc.on('cj-automation-create-tab', function (event, data) {
+  var payload = data || {}
+  var newTab = tabs.add({
+    url: payload.url || ''
+  })
+
+  if (payload.profileId) {
+    ipc.send('cj-automation-set-tab-profile', {
+      tabId: newTab,
+      profileId: payload.profileId
+    })
+  }
+
+  require('browserUI.js').addTab(newTab, {
+    enterEditMode: !payload.url,
+    openInBackground: !!payload.openInBackground
+  })
+
+  ipc.send('cj-automation-create-tab-result', {
+    requestId: payload.requestId,
+    tabId: newTab,
+    url: payload.url || '',
+    profileId: payload.profileId || ''
+  })
+})
+
+/**
+ * @correction #1919#2 Main process closes tab -> renderer removes tab from UI + state
+ * destroyView() only destroys the main-process webContents; renderer tab entries remain as zombies.
+ * This IPC handler lets the main process trigger full renderer-side tab cleanup.
+ */
+ipc.on('cj-automation-close-tab', function (event, data) {
+  var tabId = data && data.tabId
+  if (!tabId) return
+  require('browserUI.js').closeTab(tabId)
+})
+
 // https://remysharp.com/2010/07/21/throttling-function-calls
 
 window.throttle = function (fn, threshhold, scope) {

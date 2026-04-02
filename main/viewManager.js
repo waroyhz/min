@@ -38,7 +38,12 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
 
   viewStateMap[id] = {
     loadedInitialURL: false,
-    hasJS: viewPrefs.javascript // need this later to see if we should swap the view for a JS-enabled one
+    hasJS: viewPrefs.javascript, // need this later to see if we should swap the view for a JS-enabled one
+    creationOptions: {
+      boundsString: boundsString,
+      events: (events || []).slice(),
+      webPreferences: Object.assign({}, viewPrefs)
+    }
   }
 
   let view
@@ -205,13 +210,39 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
 
   view.webContents.on('did-start-navigation', handleExternalProtocol)
 
+  // CJ Browser: Collect console messages into in-memory ring buffer
+  view.webContents.on('console-message', function (event, level, message, line, sourceId) {
+    if (typeof cjAutomate !== 'undefined' && cjAutomate.appendTabLog) {
+      var levelNames = ['verbose', 'info', 'warning', 'error']
+      cjAutomate.appendTabLog(id, levelNames[level] || 'log', message, sourceId, line)
+    }
+  })
+
   // CJ Browser: Track page navigation for operation logging
+  /**
+   * @correction #2108#8 did-start-navigation和did-finish-load事件都写入ring buffer，
+   * 记录每次页面跳转的URL，日志驻留在主进程不随页面销毁丢失。
+   */
+  view.webContents.on('did-start-navigation', function (event, url, isInPlace, isMainFrame) {
+    if (isMainFrame && typeof cjAutomate !== 'undefined' && cjAutomate.appendTabLog) {
+      cjAutomate.appendTabLog(id, 'navigate', '[NAV-START] ' + (url || ''))
+    }
+  })
+
   view.webContents.on('did-finish-load', function () {
     try {
       var url = view.webContents.getURL()
       var title = view.webContents.getTitle()
+      // @correction #2108#8 页面加载完成写入ring buffer
+      if (typeof cjAutomate !== 'undefined' && cjAutomate.appendTabLog) {
+        cjAutomate.appendTabLog(id, 'load', '[NAV-LOADED] ' + (url || '') + ' title=' + (title || ''))
+      }
       if (url && !url.startsWith('min://') && url !== 'about:blank') {
         cjTracker.trackPageView(url, title, id)
+        // @since #1331#2 环境同步: 检测第三方服务导航
+        if (typeof cjEnvSync !== 'undefined' && cjEnvSync.onPageNavigate) {
+          cjEnvSync.onPageNavigate(url)
+        }
         // CJ Browser: Check for auto-login on CJ domains
         if (url.indexOf('cjdropshipping') !== -1 && cjAuth && typeof cjAuth.checkAutoLogin === 'function') {
           cjAuth.checkAutoLogin(url, view.webContents)
@@ -219,11 +250,43 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
         if (cjConfig && typeof cjConfig.handleRecoveredPage === 'function') {
           cjConfig.handleRecoveredPage(url, view.webContents)
         }
+        /**
+         * CF Turnstile 自动检测与跳过 — 浏览器基础可复用能力
+         * @correction 1549补充#6 CF跳过作为基础能力，页面加载时自动检测并触发bypass
+         *             在非录制/回放模式下仅检测并记录，在自动化上下文中自动触发bypass
+         * @correction #1556#6 跳过localhost/内部页面减少CDP调用降低CPU占用
+         */
+        if (typeof cjAutomationAssistant !== 'undefined' && cjAutomationAssistant._isCfBlocked
+            && url.indexOf('localhost') === -1 && url.indexOf('127.0.0.1') === -1 && !url.startsWith('min://')) {
+          cjAutomationAssistant._isCfBlocked(view.webContents).then(function (blocked) {
+            if (blocked) {
+              console.log('[CJ View] Cloudflare Turnstile detected on ' + url.substring(0, 80) + ' (tab ' + id + ')')
+              // Emit event for automation context to handle
+              if (typeof cjAutomationAssistant._onCfDetected === 'function') {
+                cjAutomationAssistant._onCfDetected(id, view.webContents, url)
+              }
+            }
+          }).catch(function () {})
+        }
       }
     } catch (e) {
       console.warn('[CJ View] did-finish-load error:', e.message)
     }
   })
+
+  /**
+   * @correction #2304#9 CDP永不释放 — 浏览器启动时即加载CDP
+   * 每个view创建后立即attach CDP debugger，确保CDP始终可用。
+   * 如需修改此方案，请与项目负责人确认。
+   */
+  try {
+    if (!view.webContents.debugger.isAttached()) {
+      view.webContents.debugger.attach('1.3')
+      console.log('[CJ View] CDP auto-attached for tab ' + id + ' (per #2304#9 policy)')
+    }
+  } catch (cdpErr) {
+    console.warn('[CJ View] CDP auto-attach failed for tab ' + id + ': ' + cdpErr.message)
+  }
 
   /*
   It's possible for an HTTP request to redirect to an external app link
@@ -293,7 +356,8 @@ function setView (id, senderContents) {
 
   // changing views can cause flickering, so we only want to call it if the view is actually changing
   // see https://github.com/minbrowser/min/issues/1966
-  if (windows.getState(win).selectedView !== viewMap[id]) {
+  // @correction #1556#7#8 修复比较: selectedView存储id(string), 应与id比较而非viewMap[id](object)
+  if (windows.getState(win).selectedView !== id) {
     //remove all prior views
     win.getContentView().children.slice(1).forEach(child => win.getContentView().removeChildView(child))
     if (viewStateMap[id].loadedInitialURL) {
@@ -307,6 +371,9 @@ function setView (id, senderContents) {
 
 function setBounds (id, bounds) {
   if (viewMap[id]) {
+    /**
+     * @correction 第24次提交: CF新窗口方案不再移动view，无需拦截setBounds。
+     */
     viewMap[id].setBounds(bounds)
   }
 }
@@ -339,6 +406,32 @@ function getView (id) {
   return viewMap[id]
 }
 
+function recreateViewWithWebPreferences (id, webPreferences, url, win) {
+  if (!viewMap[id] || !viewStateMap[id] || !viewStateMap[id].creationOptions) {
+    return false
+  }
+
+  var creationOptions = viewStateMap[id].creationOptions
+  var nextPreferences = Object.assign({}, creationOptions.webPreferences || getDefaultViewWebPreferences(), webPreferences || {})
+  var boundsString = creationOptions.boundsString || JSON.stringify({ x: 0, y: 0, width: 1280, height: 900 })
+  var events = (creationOptions.events || []).slice()
+  var targetWindow = win || getWindowFromViewContents(viewMap[id].webContents) || windows.getCurrent()
+
+  destroyView(id)
+  createView(null, id, nextPreferences, boundsString, events)
+
+  if (url) {
+    loadURLInView(id, url, targetWindow)
+  }
+
+  if (targetWindow) {
+    setView(id, getWindowWebContents(targetWindow))
+    focusView(id)
+  }
+
+  return true
+}
+
 function getTabIDFromWebContents (contents) {
   for (var id in viewMap) {
     if (viewMap[id].webContents === contents) {
@@ -367,6 +460,18 @@ ipc.on('destroyAllViews', function () {
 ipc.on('setView', function (e, args) {
   setView(args.id, e.sender)
   setBounds(args.id, args.bounds)
+  /**
+   * @correction #1938 延迟刷新bounds修复切换tab后webview不显示
+   * Electron WebContentsView 在同一事件循环中 addChildView + setBounds
+   * 可能不触发 Native 重绘。延迟一帧再次 setBounds 强制合成器刷新。
+   */
+  var deferredId = args.id
+  var deferredBounds = args.bounds
+  setTimeout(function () {
+    if (viewMap[deferredId]) {
+      viewMap[deferredId].setBounds(deferredBounds)
+    }
+  }, 16)
   if (args.focus && BrowserWindow.fromWebContents(e.sender) && BrowserWindow.fromWebContents(e.sender).isFocused()) {
     const couldFocus = focusView(args.id)
     if (!couldFocus) {

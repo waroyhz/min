@@ -9,9 +9,13 @@ body {
   display: none;
 }
 
+/**
+ * @correction #260330#9
+ * Windows/Linux 非最大化窗口移除地址栏顶部保留空隙（12px），避免出现明显顶边空白。
+ */
 body.windows:not(.maximized):not(.fullscreen):not(.separate-titlebar),
 body.linux:not(.maximized):not(.fullscreen):not(.separate-titlebar) {
-  --control-space-top: 12px;
+  --control-space-top: 0px;
 }
 
 /* On Windows, draggable regions aren't clickable, so the drag region is a separate area above the tabstrip */
