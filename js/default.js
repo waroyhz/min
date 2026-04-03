@@ -288,14 +288,13 @@ require('searchbar/calculatorPlugin.js').initialize()
     updateBar.id = 'cj-update-bar'
     updateBar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:999999;display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 16px;background:#1a73e8;color:#fff;font-size:13px;font-family:system-ui,sans-serif;box-shadow:0 -2px 8px rgba(0,0,0,.18);'
 
-    var platformLabel = info.platformLabel || '应用'
     var msg = document.createElement('span')
-    msg.textContent = '发现新的 ' + platformLabel + ' 版本 v' + info.latestVersion + '（当前 v' + info.currentVersion + '）'
+    msg.textContent = '发现新版本 v' + info.latestVersion + '（当前 v' + info.currentVersion + '）'
     updateBar.appendChild(msg)
 
     if (info.downloadUrl) {
       var btn = document.createElement('button')
-      btn.textContent = '下载' + platformLabel + '版'
+      btn.textContent = '前往下载'
       btn.style.cssText = 'border:1px solid #fff;background:transparent;color:#fff;padding:3px 12px;border-radius:3px;cursor:pointer;font-size:12px;'
       btn.addEventListener('click', function () {
         ipc.send('cj-update-download', info.downloadUrl)

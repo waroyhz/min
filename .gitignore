@@ -16,3 +16,6 @@ css/cjSidebar.css
 pages/error/error.js
 .npmrc
 nul
+# Agent data (auto-generated)
+cj-ai-analysis/
+d:\ai*

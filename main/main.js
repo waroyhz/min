@@ -182,15 +182,25 @@ var saveWindowBounds = function () {
 
 /**
  * @correction 第24次提交(#23补充#9): 包裹整个函数体防止"Render frame was disposed"崩溃。
- * 当窗口WebContents在IPC发送过程中被销毁时（如关闭窗口），会抛出异常。
+ * @correction #0403#3: 添加自愈机制。当检测到mainView render frame被dispose时，
+ * 自动重新加载browserPage以恢复窗口UI渲染，防止永久白屏。
+ * 使用 _ipcSendRecoveryInProgress 标志防止多次并发恢复。
  */
+var _ipcSendRecoveryInProgress = false
 function sendIPCToWindow (window, action, data) {
   try {
     if (window && window.isDestroyed()) {
       return
     }
 
-    if (window && getWindowWebContents(window).isLoadingMainFrame()) {
+    // Pre-check: test if mainView webContents is still alive
+    var wc = getWindowWebContents(window)
+    if (window && wc && wc.isDestroyed && wc.isDestroyed()) {
+      _attemptMainViewRecovery(window, action, data)
+      return
+    }
+
+    if (window && wc && wc.isLoadingMainFrame()) {
       // immediately after a did-finish-load event, isLoading can still be true,
       // so wait a bit to confirm that the page is really loading
       setTimeout(function() {
@@ -206,7 +216,7 @@ function sendIPCToWindow (window, action, data) {
         } catch (e) { /* Render frame disposed during deferred send */ }
       }, 0)
     } else if (window) {
-      getWindowWebContents(window).send(action, data || {})
+      wc.send(action, data || {})
     } else {
       var window = createWindow()
       getWindowWebContents(window).once('did-finish-load', function () {
@@ -214,7 +224,44 @@ function sendIPCToWindow (window, action, data) {
       })
     }
   } catch (e) {
-    // Render frame was disposed before WebFrameMain could be accessed — safe to ignore
+    // Render frame was disposed - attempt self-healing
+    if (window && !window.isDestroyed() && e && e.message && e.message.indexOf('disposed') !== -1) {
+      _attemptMainViewRecovery(window, action, data)
+    }
+  }
+}
+
+/**
+ * Self-healing: reload mainView when render frame is disposed.
+ * @correction #0403#3 Prevents permanent white screen by recreating the browser UI.
+ * Rate-limited: only one recovery attempt per 30 seconds.
+ */
+function _attemptMainViewRecovery (window, pendingAction, pendingData) {
+  if (_ipcSendRecoveryInProgress || !window || window.isDestroyed()) return
+  _ipcSendRecoveryInProgress = true
+  console.warn('[CJ Recovery] Render frame disposed detected - attempting mainView reload...')
+
+  try {
+    var contentView = window.getContentView()
+    var mainView = contentView && contentView.children && contentView.children[0]
+    if (mainView && mainView.webContents && !mainView.webContents.isDestroyed()) {
+      mainView.webContents.loadURL(browserPage)
+      mainView.webContents.once('did-finish-load', function () {
+        console.log('[CJ Recovery] mainView reloaded successfully')
+        _ipcSendRecoveryInProgress = false
+        if (pendingAction) {
+          try { mainView.webContents.send(pendingAction, pendingData || {}) } catch (e) {}
+        }
+      })
+      // Timeout: if reload takes too long, reset the flag
+      setTimeout(function () { _ipcSendRecoveryInProgress = false }, 30000)
+    } else {
+      console.error('[CJ Recovery] mainView webContents destroyed - cannot recover without full window restart')
+      _ipcSendRecoveryInProgress = false
+    }
+  } catch (e) {
+    console.error('[CJ Recovery] Recovery failed:', e.message)
+    _ipcSendRecoveryInProgress = false
   }
 }
 
@@ -285,24 +332,10 @@ function createWindow (customArgs = {}) {
   return createWindowWithBounds(bounds, customArgs)
 }
 
-function getApplicationIconPath () {
-  if (process.platform === 'win32') {
-    return path.join(__dirname, 'icons', 'icon256.ico')
-  }
-
-  if (process.platform === 'darwin') {
-    if (app.isPackaged) {
-      return null
-    }
-    return path.join(__dirname, 'icons', 'icon.iconset', 'icon_512x512@2x.png')
-  }
-
-  return path.join(__dirname, 'icons', 'icon512.png')
-}
-
 function createWindowWithBounds (bounds, customArgs) {
-  const windowIconPath = getApplicationIconPath()
-  const windowOptions = {
+  const windowIconPath = path.join(__dirname, 'icons', process.platform === 'win32' ? 'icon256.ico' : 'icon512.png')
+
+  const newWin = new BaseWindow({
     width: bounds.width,
     height: bounds.height,
     x: bounds.x,
@@ -311,16 +344,11 @@ function createWindowWithBounds (bounds, customArgs) {
     minHeight: 350,
     titleBarStyle: settings.get('useSeparateTitlebar') ? 'default' : 'hidden',
     trafficLightPosition: { x: 12, y: 10 },
+    icon: windowIconPath,
     frame: settings.get('useSeparateTitlebar'),
     alwaysOnTop: settings.get('windowAlwaysOnTop'),
     backgroundColor: '#fff', // the value of this is ignored, but setting it seems to work around https://github.com/electron/electron/issues/10559
-  }
-
-  if (windowIconPath) {
-    windowOptions.icon = windowIconPath
-  }
-
-  const newWin = new BaseWindow(windowOptions)
+  })
 
   // windows and linux always use a menu button in the upper-left corner instead
   // if frame: false is set, this won't have any effect, but it does apply on Linux if "use separate titlebar" is enabled
@@ -368,9 +396,7 @@ function createWindowWithBounds (bounds, customArgs) {
     try {
       getWindowWebContents(newWin).send('cj-domains-updated', cjConfig.getDomains())
       getWindowWebContents(newWin).send('cj-proxy-status', { enabled: typeof cjProxyEnabled !== 'undefined' ? cjProxyEnabled : false, source: typeof cjProxySource !== 'undefined' ? cjProxySource : 'none', loggedIn: !!(cjAuth && cjAuth.getToken()) })
-      if (cjConfig.getEnvironment() !== 'production') {
-        getWindowWebContents(newWin).send('cj-env-changed', cjConfig.getEnvironmentInfo())
-      }
+      getWindowWebContents(newWin).send('cj-env-changed', cjConfig.getEnvironmentInfo())
     } catch (e) {
       // config may not be loaded yet
     }  })
@@ -487,8 +513,8 @@ app.on('ready', function () {
   appIsReady = true
 
   // CJ Browser: Set Dock icon on macOS (dev mode shows Electron default otherwise)
-  if (process.platform === 'darwin' && app.dock && !app.isPackaged) {
-    app.dock.setIcon(getApplicationIconPath())
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(path.join(__dirname, 'icons', 'icon512.png'))
   }
 
   /* the installer launches the app to install registry items and shortcuts,
@@ -578,6 +604,19 @@ app.on('ready', function () {
       enabled: typeof cjProxyEnabled !== 'undefined' ? cjProxyEnabled : false,
       source: typeof cjProxySource !== 'undefined' ? cjProxySource : 'none',
       mode: typeof cjProxyEnabled !== 'undefined' && cjProxyEnabled ? 'company' : 'direct'
+    }
+  })
+
+  // CJ Browser: Environment switching from sidebar (#1920-2)
+  ipc.on('cj-switch-env', function (e, envKey) {
+    if (cjConfig && typeof cjConfig.switchEnvironment === 'function') {
+      var success = cjConfig.switchEnvironment(envKey)
+      if (!success) {
+        // Notify renderer that switch failed (re-send current env info)
+        windows.getAll().forEach(function (win) {
+          getWindowWebContents(win).send('cj-env-changed', cjConfig.getEnvironmentInfo())
+        })
+      }
     }
   })
 

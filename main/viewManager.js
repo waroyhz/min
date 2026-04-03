@@ -243,8 +243,14 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
         if (typeof cjEnvSync !== 'undefined' && cjEnvSync.onPageNavigate) {
           cjEnvSync.onPageNavigate(url)
         }
-        // CJ Browser: Check for auto-login on CJ domains
-        if (url.indexOf('cjdropshipping') !== -1 && cjAuth && typeof cjAuth.checkAutoLogin === 'function') {
+        // CJ Browser: Check for auto-login on CJ domains and localhost (development mode)
+        /**
+         * @correction #0403#4 触发条件扩展: 增加 localhost/127.0.0.1 以修复本地开发模式
+         * 下 checkAutoLogin 不触发的问题。此前仅匹配 cjdropshipping 域名。
+         */
+        var isCjUrl = url.indexOf('cjdropshipping') !== -1
+        var isLocalUrl = url.indexOf('localhost') !== -1 || url.indexOf('127.0.0.1') !== -1
+        if ((isCjUrl || isLocalUrl) && cjAuth && typeof cjAuth.checkAutoLogin === 'function') {
           cjAuth.checkAutoLogin(url, view.webContents)
         }
         if (cjConfig && typeof cjConfig.handleRecoveredPage === 'function') {
@@ -255,15 +261,42 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
          * @correction 1549补充#6 CF跳过作为基础能力，页面加载时自动检测并触发bypass
          *             在非录制/回放模式下仅检测并记录，在自动化上下文中自动触发bypass
          * @correction #1556#6 跳过localhost/内部页面减少CDP调用降低CPU占用
+         * @correction #2312#3 手动浏览时仅检测记录，不触发bypass；只有在自动化上下文
+         *             (录制/回放/受控tab)时才自动触发bypass，防止手动访问CF站点时浏览器卡死
          */
         if (typeof cjAutomationAssistant !== 'undefined' && cjAutomationAssistant._isCfBlocked
             && url.indexOf('localhost') === -1 && url.indexOf('127.0.0.1') === -1 && !url.startsWith('min://')) {
           cjAutomationAssistant._isCfBlocked(view.webContents).then(function (blocked) {
             if (blocked) {
               console.log('[CJ View] Cloudflare Turnstile detected on ' + url.substring(0, 80) + ' (tab ' + id + ')')
-              // Emit event for automation context to handle
-              if (typeof cjAutomationAssistant._onCfDetected === 'function') {
+              // @correction #2312#3: Only auto-trigger bypass in automation context
+              // Manual browsing: detect + log only, no OS-level intervention
+              var isAutomationCtx = false
+              if (typeof cjAutomationAssistant._findActiveTaskByTab === 'function' && cjAutomationAssistant._findActiveTaskByTab(id)) {
+                isAutomationCtx = true
+              }
+              if (!isAutomationCtx && typeof cjAutomate !== 'undefined' && cjAutomate.controlledTabs && cjAutomate.controlledTabs[id]) {
+                isAutomationCtx = true
+              }
+              /**
+               * @correction 260403 macOS复核: CF弹出窗口的tab也需要自动bypass。
+               * 弹出窗口由_handleCfBypass创建，其tab不在controlledTabs中，
+               * 但如果_cfPopupWin存在且包含该view，则视为自动化上下文。
+               */
+              if (!isAutomationCtx && typeof cjAutomate !== 'undefined' && cjAutomate._cfPopupWin && !cjAutomate._cfPopupWin.isDestroyed()) {
+                var popWin = cjAutomate._cfPopupWin
+                try {
+                  var viewWin = view && view.webContents ? (typeof getWindowFromViewContents === 'function' ? getWindowFromViewContents(view.webContents) : null) : null
+                  if (viewWin && viewWin === popWin) {
+                    isAutomationCtx = true
+                    console.log('[CJ View] CF popup window tab detected, enabling auto-bypass (tab ' + id + ')')
+                  }
+                } catch (e) {}
+              }
+              if (isAutomationCtx && typeof cjAutomationAssistant._onCfDetected === 'function') {
                 cjAutomationAssistant._onCfDetected(id, view.webContents, url)
+              } else {
+                console.log('[CJ View] CF detected but tab not in automation context, skipping auto-bypass (tab ' + id + ')')
               }
             }
           }).catch(function () {})
