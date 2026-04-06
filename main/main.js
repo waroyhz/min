@@ -182,15 +182,25 @@ var saveWindowBounds = function () {
 
 /**
  * @correction 第24次提交(#23补充#9): 包裹整个函数体防止"Render frame was disposed"崩溃。
- * 当窗口WebContents在IPC发送过程中被销毁时（如关闭窗口），会抛出异常。
+ * @correction #0403#3: 添加自愈机制。当检测到mainView render frame被dispose时，
+ * 自动重新加载browserPage以恢复窗口UI渲染，防止永久白屏。
+ * 使用 _ipcSendRecoveryInProgress 标志防止多次并发恢复。
  */
+var _ipcSendRecoveryInProgress = false
 function sendIPCToWindow (window, action, data) {
   try {
     if (window && window.isDestroyed()) {
       return
     }
 
-    if (window && getWindowWebContents(window).isLoadingMainFrame()) {
+    // Pre-check: test if mainView webContents is still alive
+    var wc = getWindowWebContents(window)
+    if (window && wc && wc.isDestroyed && wc.isDestroyed()) {
+      _attemptMainViewRecovery(window, action, data)
+      return
+    }
+
+    if (window && wc && wc.isLoadingMainFrame()) {
       // immediately after a did-finish-load event, isLoading can still be true,
       // so wait a bit to confirm that the page is really loading
       setTimeout(function() {
@@ -206,7 +216,7 @@ function sendIPCToWindow (window, action, data) {
         } catch (e) { /* Render frame disposed during deferred send */ }
       }, 0)
     } else if (window) {
-      getWindowWebContents(window).send(action, data || {})
+      wc.send(action, data || {})
     } else {
       var window = createWindow()
       getWindowWebContents(window).once('did-finish-load', function () {
@@ -214,7 +224,44 @@ function sendIPCToWindow (window, action, data) {
       })
     }
   } catch (e) {
-    // Render frame was disposed before WebFrameMain could be accessed — safe to ignore
+    // Render frame was disposed - attempt self-healing
+    if (window && !window.isDestroyed() && e && e.message && e.message.indexOf('disposed') !== -1) {
+      _attemptMainViewRecovery(window, action, data)
+    }
+  }
+}
+
+/**
+ * Self-healing: reload mainView when render frame is disposed.
+ * @correction #0403#3 Prevents permanent white screen by recreating the browser UI.
+ * Rate-limited: only one recovery attempt per 30 seconds.
+ */
+function _attemptMainViewRecovery (window, pendingAction, pendingData) {
+  if (_ipcSendRecoveryInProgress || !window || window.isDestroyed()) return
+  _ipcSendRecoveryInProgress = true
+  console.warn('[CJ Recovery] Render frame disposed detected - attempting mainView reload...')
+
+  try {
+    var contentView = window.getContentView()
+    var mainView = contentView && contentView.children && contentView.children[0]
+    if (mainView && mainView.webContents && !mainView.webContents.isDestroyed()) {
+      mainView.webContents.loadURL(browserPage)
+      mainView.webContents.once('did-finish-load', function () {
+        console.log('[CJ Recovery] mainView reloaded successfully')
+        _ipcSendRecoveryInProgress = false
+        if (pendingAction) {
+          try { mainView.webContents.send(pendingAction, pendingData || {}) } catch (e) {}
+        }
+      })
+      // Timeout: if reload takes too long, reset the flag
+      setTimeout(function () { _ipcSendRecoveryInProgress = false }, 30000)
+    } else {
+      console.error('[CJ Recovery] mainView webContents destroyed - cannot recover without full window restart')
+      _ipcSendRecoveryInProgress = false
+    }
+  } catch (e) {
+    console.error('[CJ Recovery] Recovery failed:', e.message)
+    _ipcSendRecoveryInProgress = false
   }
 }
 

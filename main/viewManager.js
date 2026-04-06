@@ -243,8 +243,14 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
         if (typeof cjEnvSync !== 'undefined' && cjEnvSync.onPageNavigate) {
           cjEnvSync.onPageNavigate(url)
         }
-        // CJ Browser: Check for auto-login on CJ domains
-        if (url.indexOf('cjdropshipping') !== -1 && cjAuth && typeof cjAuth.checkAutoLogin === 'function') {
+        // CJ Browser: Check for auto-login on CJ domains and localhost (development mode)
+        /**
+         * @correction #0403#4 触发条件扩展: 增加 localhost/127.0.0.1 以修复本地开发模式
+         * 下 checkAutoLogin 不触发的问题。此前仅匹配 cjdropshipping 域名。
+         */
+        var isCjUrl = url.indexOf('cjdropshipping') !== -1
+        var isLocalUrl = url.indexOf('localhost') !== -1 || url.indexOf('127.0.0.1') !== -1
+        if ((isCjUrl || isLocalUrl) && cjAuth && typeof cjAuth.checkAutoLogin === 'function') {
           cjAuth.checkAutoLogin(url, view.webContents)
         }
         if (cjConfig && typeof cjConfig.handleRecoveredPage === 'function') {
@@ -272,6 +278,21 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
               if (!isAutomationCtx && typeof cjAutomate !== 'undefined' && cjAutomate.controlledTabs && cjAutomate.controlledTabs[id]) {
                 isAutomationCtx = true
               }
+              /**
+               * @correction 260403 macOS复核: CF弹出窗口的tab也需要自动bypass。
+               * 弹出窗口由_handleCfBypass创建，其tab不在controlledTabs中，
+               * 但如果_cfPopupWin存在且包含该view，则视为自动化上下文。
+               */
+              if (!isAutomationCtx && typeof cjAutomate !== 'undefined' && cjAutomate._cfPopupWin && !cjAutomate._cfPopupWin.isDestroyed()) {
+                var popWin = cjAutomate._cfPopupWin
+                try {
+                  var viewWin = view && view.webContents ? (typeof getWindowFromViewContents === 'function' ? getWindowFromViewContents(view.webContents) : null) : null
+                  if (viewWin && viewWin === popWin) {
+                    isAutomationCtx = true
+                    console.log('[CJ View] CF popup window tab detected, enabling auto-bypass (tab ' + id + ')')
+                  }
+                } catch (e) {}
+              }
               if (isAutomationCtx && typeof cjAutomationAssistant._onCfDetected === 'function') {
                 cjAutomationAssistant._onCfDetected(id, view.webContents, url)
               } else {
@@ -287,18 +308,15 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
   })
 
   /**
-   * @correction #2304#9 CDP永不释放 — 浏览器启动时即加载CDP
-   * 每个view创建后立即attach CDP debugger，确保CDP始终可用。
-   * 如需修改此方案，请与项目负责人确认。
+   * @correction #0404#1 CDP按需附加 — 取代 #2304#9 全量附加策略。
+   * 不再对所有tab自动attach CDP，仅在自动化上下文需要时由
+   * cjAutomationAssistant 按需attach。
+   * 原因: Cloudflare JS challenge 检测 debugger protocol，
+   * 全量attach导致所有tab的CF验证失败（JS challenge阶段卡死）。
+   * v1.0.8生产版本不受影响因为没有全量attach。
+   * 如需恢复全量attach，请评估对CF验证的影响。
    */
-  try {
-    if (!view.webContents.debugger.isAttached()) {
-      view.webContents.debugger.attach('1.3')
-      console.log('[CJ View] CDP auto-attached for tab ' + id + ' (per #2304#9 policy)')
-    }
-  } catch (cdpErr) {
-    console.warn('[CJ View] CDP auto-attach failed for tab ' + id + ': ' + cdpErr.message)
-  }
+  // CDP deferred — will be attached on demand by automation APIs
 
   /*
   It's possible for an HTTP request to redirect to an external app link
