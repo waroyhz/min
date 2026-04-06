@@ -349,9 +349,7 @@ function createWindowWithBounds (bounds, customArgs) {
     try {
       getWindowWebContents(newWin).send('cj-domains-updated', cjConfig.getDomains())
       getWindowWebContents(newWin).send('cj-proxy-status', { enabled: typeof cjProxyEnabled !== 'undefined' ? cjProxyEnabled : false, source: typeof cjProxySource !== 'undefined' ? cjProxySource : 'none', loggedIn: !!(cjAuth && cjAuth.getToken()) })
-      if (cjConfig.getEnvironment() !== 'production') {
-        getWindowWebContents(newWin).send('cj-env-changed', cjConfig.getEnvironmentInfo())
-      }
+      getWindowWebContents(newWin).send('cj-env-changed', cjConfig.getEnvironmentInfo())
     } catch (e) {
       // config may not be loaded yet
     }  })
@@ -559,6 +557,19 @@ app.on('ready', function () {
       enabled: typeof cjProxyEnabled !== 'undefined' ? cjProxyEnabled : false,
       source: typeof cjProxySource !== 'undefined' ? cjProxySource : 'none',
       mode: typeof cjProxyEnabled !== 'undefined' && cjProxyEnabled ? 'company' : 'direct'
+    }
+  })
+
+  // CJ Browser: Environment switching from sidebar (#1920-2)
+  ipc.on('cj-switch-env', function (e, envKey) {
+    if (cjConfig && typeof cjConfig.switchEnvironment === 'function') {
+      var success = cjConfig.switchEnvironment(envKey)
+      if (!success) {
+        // Notify renderer that switch failed (re-send current env info)
+        windows.getAll().forEach(function (win) {
+          getWindowWebContents(win).send('cj-env-changed', cjConfig.getEnvironmentInfo())
+        })
+      }
     }
   })
 
