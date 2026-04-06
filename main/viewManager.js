@@ -308,18 +308,15 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
   })
 
   /**
-   * @correction #2304#9 CDP永不释放 — 浏览器启动时即加载CDP
-   * 每个view创建后立即attach CDP debugger，确保CDP始终可用。
-   * 如需修改此方案，请与项目负责人确认。
+   * @correction #0404#1 CDP按需附加 — 取代 #2304#9 全量附加策略。
+   * 不再对所有tab自动attach CDP，仅在自动化上下文需要时由
+   * cjAutomationAssistant 按需attach。
+   * 原因: Cloudflare JS challenge 检测 debugger protocol，
+   * 全量attach导致所有tab的CF验证失败（JS challenge阶段卡死）。
+   * v1.0.8生产版本不受影响因为没有全量attach。
+   * 如需恢复全量attach，请评估对CF验证的影响。
    */
-  try {
-    if (!view.webContents.debugger.isAttached()) {
-      view.webContents.debugger.attach('1.3')
-      console.log('[CJ View] CDP auto-attached for tab ' + id + ' (per #2304#9 policy)')
-    }
-  } catch (cdpErr) {
-    console.warn('[CJ View] CDP auto-attach failed for tab ' + id + ': ' + cdpErr.message)
-  }
+  // CDP deferred — will be attached on demand by automation APIs
 
   /*
   It's possible for an HTTP request to redirect to an external app link

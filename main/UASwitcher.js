@@ -58,8 +58,13 @@ function enableGoogleUASwitcher (ses) {
     }
 
     // CJ Browser: Include "Google Chrome" brand to match real Chrome fingerprint
+    // @fix #0404#3 GREASE brand dynamically computed per Chrome major version
     const chromiumVersion = process.versions.chrome.split('.')[0]
-    details.requestHeaders['SEC-CH-UA'] = `"Chromium";v="${chromiumVersion}", "Google Chrome";v="${chromiumVersion}", "Not(A:Brand";v="8"`
+    const _gc = [' ', '(', ')', '-', '.', '/', ':', ';', '=', '?', '_']
+    const _mj = parseInt(chromiumVersion) || 144
+    const _gb = 'Not' + _gc[_mj % 11] + 'A' + _gc[(_mj + 1) % 11] + 'Brand'
+    const _gv = String(_mj % 16)
+    details.requestHeaders['SEC-CH-UA'] = `"Chromium";v="${chromiumVersion}", "Google Chrome";v="${chromiumVersion}", "${_gb}";v="${_gv}"`
     details.requestHeaders['SEC-CH-UA-MOBILE'] = '?0'
 
     callback({ cancel: false, requestHeaders: details.requestHeaders })
