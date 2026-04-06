@@ -257,49 +257,47 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
           cjConfig.handleRecoveredPage(url, view.webContents)
         }
         /**
-         * CF Turnstile 自动检测与跳过 — 浏览器基础可复用能力
+         * CF Turnstile 自动检测与跳过 — 仅限自动化上下文
          * @correction 1549补充#6 CF跳过作为基础能力，页面加载时自动检测并触发bypass
-         *             在非录制/回放模式下仅检测并记录，在自动化上下文中自动触发bypass
          * @correction #1556#6 跳过localhost/内部页面减少CDP调用降低CPU占用
-         * @correction #2312#3 手动浏览时仅检测记录，不触发bypass；只有在自动化上下文
-         *             (录制/回放/受控tab)时才自动触发bypass，防止手动访问CF站点时浏览器卡死
+         * @correction #2312#3 手动浏览时仅检测记录，不触发bypass
+         * @correction 260406143500: 将_isCfBlocked(executeJavaScript)限定为仅在自动化
+         *   上下文中执行。手动浏览时完全跳过executeJavaScript注入，因为:
+         *   1) grok.com等站点的反机器人系统可检测到executeJavaScript注入，触发页面刷新
+         *   2) 形成did-finish-load → executeJS → 检测到注入 → 刷新 → did-finish-load的无限循环
+         *   3) min上游viewManager.js没有did-finish-load监听，此处CJ追加需最小化副作用
+         *   修改后: 先判断是否有自动化上下文，仅自动化tab才执行_isCfBlocked
          */
         if (typeof cjAutomationAssistant !== 'undefined' && cjAutomationAssistant._isCfBlocked
             && url.indexOf('localhost') === -1 && url.indexOf('127.0.0.1') === -1 && !url.startsWith('min://')) {
-          cjAutomationAssistant._isCfBlocked(view.webContents).then(function (blocked) {
-            if (blocked) {
-              console.log('[CJ View] Cloudflare Turnstile detected on ' + url.substring(0, 80) + ' (tab ' + id + ')')
-              // @correction #2312#3: Only auto-trigger bypass in automation context
-              // Manual browsing: detect + log only, no OS-level intervention
-              var isAutomationCtx = false
-              if (typeof cjAutomationAssistant._findActiveTaskByTab === 'function' && cjAutomationAssistant._findActiveTaskByTab(id)) {
+          // @correction 260406143500: 先检查自动化上下文，仅自动化tab才执行executeJavaScript
+          var isAutomationCtx = false
+          if (typeof cjAutomationAssistant._findActiveTaskByTab === 'function' && cjAutomationAssistant._findActiveTaskByTab(id)) {
+            isAutomationCtx = true
+          }
+          if (!isAutomationCtx && typeof cjAutomate !== 'undefined' && cjAutomate.controlledTabs && cjAutomate.controlledTabs[id]) {
+            isAutomationCtx = true
+          }
+          if (!isAutomationCtx && typeof cjAutomate !== 'undefined' && cjAutomate._cfPopupWin && !cjAutomate._cfPopupWin.isDestroyed()) {
+            var popWin = cjAutomate._cfPopupWin
+            try {
+              var viewWin = view && view.webContents ? (typeof getWindowFromViewContents === 'function' ? getWindowFromViewContents(view.webContents) : null) : null
+              if (viewWin && viewWin === popWin) {
                 isAutomationCtx = true
               }
-              if (!isAutomationCtx && typeof cjAutomate !== 'undefined' && cjAutomate.controlledTabs && cjAutomate.controlledTabs[id]) {
-                isAutomationCtx = true
+            } catch (e) {}
+          }
+          if (isAutomationCtx) {
+            cjAutomationAssistant._isCfBlocked(view.webContents).then(function (blocked) {
+              if (blocked) {
+                console.log('[CJ View] Cloudflare Turnstile detected on ' + url.substring(0, 80) + ' (tab ' + id + ', automation)')
+                if (typeof cjAutomationAssistant._onCfDetected === 'function') {
+                  cjAutomationAssistant._onCfDetected(id, view.webContents, url)
+                }
               }
-              /**
-               * @correction 260403 macOS复核: CF弹出窗口的tab也需要自动bypass。
-               * 弹出窗口由_handleCfBypass创建，其tab不在controlledTabs中，
-               * 但如果_cfPopupWin存在且包含该view，则视为自动化上下文。
-               */
-              if (!isAutomationCtx && typeof cjAutomate !== 'undefined' && cjAutomate._cfPopupWin && !cjAutomate._cfPopupWin.isDestroyed()) {
-                var popWin = cjAutomate._cfPopupWin
-                try {
-                  var viewWin = view && view.webContents ? (typeof getWindowFromViewContents === 'function' ? getWindowFromViewContents(view.webContents) : null) : null
-                  if (viewWin && viewWin === popWin) {
-                    isAutomationCtx = true
-                    console.log('[CJ View] CF popup window tab detected, enabling auto-bypass (tab ' + id + ')')
-                  }
-                } catch (e) {}
-              }
-              if (isAutomationCtx && typeof cjAutomationAssistant._onCfDetected === 'function') {
-                cjAutomationAssistant._onCfDetected(id, view.webContents, url)
-              } else {
-                console.log('[CJ View] CF detected but tab not in automation context, skipping auto-bypass (tab ' + id + ')')
-              }
-            }
-          }).catch(function () {})
+            }).catch(function () {})
+          }
+          // 手动浏览: 不执行_isCfBlocked(executeJavaScript)，避免干扰页面
         }
       }
     } catch (e) {
