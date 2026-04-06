@@ -308,6 +308,24 @@ function createView (existingViewId, id, webPreferences, boundsString, events) {
   })
 
   /**
+   * @correction 260406133000: SPA(React Router)内部路由导航不触发did-finish-load，
+   * 导致企业微信OAuth登录成功后checkAutoLogin不执行，浏览器不更新登录状态。
+   * 监听did-navigate-in-page（SPA#pushState/replaceState导航）以解决。
+   * 使用checkAutoLogin内置的5s冷却机制防止频繁调用。
+   */
+  view.webContents.on('did-navigate-in-page', function (event, url) {
+    try {
+      if (url && !url.startsWith('min://') && url !== 'about:blank') {
+        var isCjUrl = url.indexOf('cjdropshipping') !== -1
+        var isLocalUrl = url.indexOf('localhost') !== -1 || url.indexOf('127.0.0.1') !== -1
+        if ((isCjUrl || isLocalUrl) && cjAuth && typeof cjAuth.checkAutoLogin === 'function') {
+          cjAuth.checkAutoLogin(url, view.webContents)
+        }
+      }
+    } catch (e) {}
+  })
+
+  /**
    * @correction #0404#1 CDP按需附加 — 取代 #2304#9 全量附加策略。
    * 不再对所有tab自动attach CDP，仅在自动化上下文需要时由
    * cjAutomationAssistant 按需attach。
