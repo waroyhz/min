@@ -15,9 +15,14 @@ if (settings.get('customUserAgent')) {
 app.userAgentFallback = newUserAgent
 
 function getFirefoxUA () {
+  /**
+   * @correction 260407143400 #1434: 修正 Windows 64位 Firefox UA。
+   * WOW64 表示32位进程运行在64位系统——CJBrowser是原生64位，应用 Win64; x64。
+   * 线上实际抓包: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0
+   */
   const rootUAs = {
     mac: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:FXVERSION.0) Gecko/20100101 Firefox/FXVERSION.0',
-    windows: 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:FXVERSION.0) Gecko/20100101 Firefox/FXVERSION.0',
+    windows: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:FXVERSION.0) Gecko/20100101 Firefox/FXVERSION.0',
     linux: 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:FXVERSION.0) Gecko/20100101 Firefox/FXVERSION.0'
   }
 
@@ -34,45 +39,24 @@ function getFirefoxUA () {
   /*
   Guess at an appropriate Firefox version to use in the UA.
   We want a recent version (ideally the latest), but not a version that hasn't been released yet.
-  New releases are every ~4 weeks, with some delays for holidays. So assume 4.1 weeks, and estimate
-  starting from v91 on 2021-08-10
+  New releases are every ~4 weeks, with some delays for holidays.
+  @correction 260407145400 #1453: 修正发布周期常量从 4.1 → 4.15 周。
+  线上真实 Firefox UA 为 149.0（2026-04-07），4.1 周算出 150（偏高 1）。
+  实测 Firefox 91→149 共 58 版 / 1701 天 = 平均 29.3 天 ≈ 4.19 周。
+  使用 4.15 周既匹配当前真实版本号(149)，又保持动态递增。
   */
 
-  const fxVersion = 91 + Math.floor((Date.now() - 1628553600000) / (4.1 * 7 * 24 * 60 * 60 * 1000))
+  const fxVersion = 91 + Math.floor((Date.now() - 1628553600000) / (4.15 * 7 * 24 * 60 * 60 * 1000))
 
   return rootUA.replace(/FXVERSION/g, fxVersion)
 }
 
 /*
-Google blocks signin in some cases unless a custom UA is used
-see https://github.com/minbrowser/min/issues/868
+@correction 260407061500 #1304: REMOVED enableGoogleUASwitcher entirely.
+This function registered session.webRequest.onBeforeSendHeaders which REPLACED
+cjStealth._fixHttpHeaders handler (Electron only allows ONE handler per session).
+Result: cjStealth's comprehensive header fixes (sec-ch-ua-full-version-list,
+sec-ch-ua-platform, User-Agent cleanup) were silently discarded.
+Google detected incomplete Client Hints and blocked login as "browser not safe".
+All SEC-CH-UA headers are now handled exclusively by cjStealth._fixHttpHeaders.
 */
-function enableGoogleUASwitcher (ses) {
-  ses.webRequest.onBeforeSendHeaders((details, callback) => {
-    if (!hasCustomUserAgent && details.url.includes('accounts.google.com')) {
-      const url = new URL(details.url)
-
-      if (url.hostname === 'accounts.google.com') {
-        details.requestHeaders['User-Agent'] = getFirefoxUA()
-      }
-    }
-
-    // CJ Browser: Include "Google Chrome" brand to match real Chrome fingerprint
-    // @fix #0404#3 GREASE brand dynamically computed per Chrome major version
-    const chromiumVersion = process.versions.chrome.split('.')[0]
-    const _gc = [' ', '(', ')', '-', '.', '/', ':', ';', '=', '?', '_']
-    const _mj = parseInt(chromiumVersion) || 144
-    const _gb = 'Not' + _gc[_mj % 11] + 'A' + _gc[(_mj + 1) % 11] + 'Brand'
-    const _gv = String(_mj % 16)
-    details.requestHeaders['SEC-CH-UA'] = `"Chromium";v="${chromiumVersion}", "Google Chrome";v="${chromiumVersion}", "${_gb}";v="${_gv}"`
-    details.requestHeaders['SEC-CH-UA-MOBILE'] = '?0'
-
-    callback({ cancel: false, requestHeaders: details.requestHeaders })
-  })
-}
-
-app.once('ready', function () {
-  enableGoogleUASwitcher(session.defaultSession)
-})
-
-app.on('session-created', enableGoogleUASwitcher)
